@@ -114,9 +114,9 @@ export async function uploadPdf(page: Page, pages: string[], name = "sample.pdf"
 }
 
 /** Piranesi (Want to read in the demo data): attach a numbered-page PDF and open the reader on it. */
-export async function openReader(page: Page, pages = 5, title = "Piranesi"): Promise<void> {
+export async function openReader(page: Page, pages: number | string[] = 5, title = "Piranesi"): Promise<void> {
   await openDetail(page, title);
-  await uploadPdf(page, numberedPages(pages));
+  await uploadPdf(page, typeof pages === "number" ? numberedPages(pages) : pages);
   await page.getByRole("link", { name: "Read", exact: true }).click();
   await expect(page.getByRole("textbox", { name: "Page" })).toHaveValue("1");
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { clampPage, clampZoom, dropContainedRects, percentFor, rectsToFractions, searchPages } from "@/lib/reading";
+import { clampPage, clampZoom, dropContainedRects, percentFor, rectsToFractions, searchPages, wrapIndex } from "@/lib/reading";
 
 describe("clampPage", () => {
   it("keeps a valid page", () => expect(clampPage(5, 10)).toBe(5));
@@ -85,5 +85,17 @@ describe("searchPages", () => {
   });
   it("does not treat regex characters specially", () => {
     expect(searchPages(["cost (approx.) $5"], "(approx.)")).toHaveLength(1);
+  });
+});
+
+describe("wrapIndex", () => {
+  it("steps and wraps at both ends", () => {
+    expect(wrapIndex(0, 1, 3)).toBe(1);
+    expect(wrapIndex(2, 1, 3)).toBe(0);
+    expect(wrapIndex(0, -1, 3)).toBe(2);
+    expect(wrapIndex(1, -1, 3)).toBe(0);
+  });
+  it("is 0 for an empty list", () => {
+    expect(wrapIndex(0, 1, 0)).toBe(0);
   });
 });

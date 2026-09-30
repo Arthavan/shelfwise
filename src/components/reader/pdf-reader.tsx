@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, CircleCheck } from "lucide-react";
 import type { PDFDocumentProxy } from "pdfjs-dist";
@@ -8,15 +8,18 @@ import { toast } from "sonner";
 import { addBookmarkAction, removeBookmarkAction, saveProgressAction, startReadingAction } from "@/app/books/[id]/read/actions";
 import { updateBookStatus } from "@/app/books/status-actions";
 import { pdfOutlineToItems, type OutlineItem } from "@/components/reader/outline";
+import { getAllPageTexts } from "@/components/reader/page-text";
 import { PdfPage } from "@/components/reader/pdf-page";
 import { loadPdf } from "@/components/reader/pdf-loader";
 import { ReaderToolbar } from "@/components/reader/reader-toolbar";
+import { SEARCH_INPUT_ID, SearchPanel } from "@/components/reader/search-panel";
 import { SidePanel, type PanelTab } from "@/components/reader/side-panel";
 import type { ReaderData } from "@/components/reader/types";
 import { useProgressSaver, type ProgressPayload } from "@/components/reader/use-progress-saver";
 import { Button } from "@/components/ui/button";
 import { ERROR_TOAST, STATUS_TOASTS } from "@/lib/constants";
-import { clampPage, clampZoom, percentFor, type PageTheme, type ViewMode } from "@/lib/reading";
+import { clampPage, clampZoom, percentFor, searchPages, wrapIndex, type PageTheme, type ViewMode } from "@/lib/reading";
+import type { SearchHit } from "@/lib/reading";
 import type { BookmarkInfo, BookStatus, HighlightInfo } from "@/lib/types";
 
 const DEFAULT_ZOOM = 1.25;
@@ -86,9 +89,14 @@ export function PdfReader({ data }: { data: ReaderData }) {
   const [panelOpen, setPanelOpen] = useState(false);
   const [panelTab, setPanelTab] = useState<PanelTab>("contents");
   const [outline, setOutline] = useState<OutlineItem[]>([]);
-  // Held now; highlights and search are wired up in Tasks 8-9.
+  // Held now; highlights are wired up in Task 9.
   const [highlights] = useState<HighlightInfo[]>(data.highlights);
-  const [searchQuery] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [pageTexts, setPageTexts] = useState<string[] | null>(null);
+  const [searchProgress, setSearchProgress] = useState<{ done: number; total: number } | null>(null);
+  const [pick, setPick] = useState<{ hits: SearchHit[]; index: number } | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   /** Page to scroll to in scroll mode (set by user navigation, mode switch and zoom; not by scrolling). */
@@ -150,6 +158,38 @@ export function PdfReader({ data }: { data: ReaderData }) {
     };
   }, [pdf]);
 
+  // Search: extract every page's text once, on first open (cached per document).
+  useEffect(() => {
+    if (!pdf || !searchOpen || pageTexts) return;
+    let cancelled = false;
+    getAllPageTexts(pdf, (done, total) => {
+      if (!cancelled) setSearchProgress({ done, total });
+    })
+      .then((texts) => {
+        if (cancelled) return;
+        setPageTexts(texts);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        toast.error(ERROR_TOAST);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [pdf, searchOpen, pageTexts]);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQuery(query), 200);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  const hits = useMemo(() => (pageTexts ? searchPages(pageTexts, debouncedQuery) : []), [pageTexts, debouncedQuery]);
+  const hitIndex = pick && pick.hits === hits ? pick.index : 0;
+  const noText = pageTexts !== null && pageTexts.every((t) => t === "");
+  const searching = pdf !== null && searchOpen && !pageTexts;
+  const searchLoading = searching ? (searchProgress ?? { done: 0, total: pdf.numPages }) : null;
+  const searchPending = query !== debouncedQuery;
+
   // Debounced progress saving. Positions equal to the last known one (initially the one we opened at)
   // are not re-saved, so opening a book does not rewrite an identical position.
   const save = useCallback((p: ProgressPayload) => saveProgressAction({ id: bookId, ...p }), [bookId]);
@@ -173,6 +213,35 @@ export function PdfReader({ data }: { data: ReaderData }) {
     },
     [pageCount],
   );
+
+  // A fresh result set jumps to its first hit.
+  const firstHitPage = hits.length > 0 ? hits[0].page : null;
+  useEffect(() => {
+    if (!searchOpen || firstHitPage === null) return;
+    const t = setTimeout(() => goTo(firstHitPage), 0);
+    return () => clearTimeout(t);
+  }, [hits, searchOpen, firstHitPage, goTo]);
+
+  const pickHit = useCallback(
+    (i: number) => {
+      if (hits.length === 0) return;
+      const index = wrapIndex(i, 0, hits.length);
+      setPick({ hits, index });
+      goTo(hits[index].page);
+    },
+    [hits, goTo],
+  );
+
+  const closeSearch = useCallback(() => {
+    setSearchOpen(false);
+    setQuery("");
+    setDebouncedQuery("");
+  }, []);
+
+  const openSearch = useCallback(() => {
+    setSearchOpen(true);
+    requestAnimationFrame(() => document.getElementById(SEARCH_INPUT_ID)?.focus());
+  }, []);
 
   // Page mode: back to the top of the page on navigation. Scroll mode: bring the requested page into view.
   useEffect(() => {
@@ -237,6 +306,15 @@ export function PdfReader({ data }: { data: ReaderData }) {
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || isTypingTarget(e.target)) return;
+      if (e.key === "/") {
+        e.preventDefault(); // keep the "/" out of the search box it opens
+        openSearch();
+        return;
+      }
+      if (e.key === "Escape" && searchOpen) {
+        closeSearch();
+        return;
+      }
       if (pageCount === null) return;
       let target: number | null = null;
       if (e.key === "ArrowRight" || e.key === "PageDown") target = page + 1;
@@ -254,7 +332,7 @@ export function PdfReader({ data }: { data: ReaderData }) {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [page, pageCount, goTo]);
+  }, [page, pageCount, goTo, searchOpen, openSearch, closeSearch]);
 
   const changeZoom = useCallback(
     (z: number) => {
@@ -283,7 +361,10 @@ export function PdfReader({ data }: { data: ReaderData }) {
     else void document.documentElement.requestFullscreen().catch(() => {});
   }, []);
 
-  const noop = useCallback(() => {}, []);
+  const toggleSearch = useCallback(() => {
+    if (searchOpen) closeSearch();
+    else openSearch();
+  }, [searchOpen, openSearch, closeSearch]);
 
   const currentBookmark = bookmarks.find((b) => b.location === String(page));
   const toggleBookmark = useCallback(async () => {
@@ -366,7 +447,7 @@ export function PdfReader({ data }: { data: ReaderData }) {
         onTheme={setPageTheme}
         onToggleFullscreen={toggleFullscreen}
         onToggleSidebar={togglePanel}
-        onToggleSearch={noop}
+        onToggleSearch={toggleSearch}
         bookmarked={bookmarked}
         onToggleBookmark={() => void toggleBookmark()}
         backHref={backHref}
@@ -374,17 +455,32 @@ export function PdfReader({ data }: { data: ReaderData }) {
         onBack={flush}
         title={data.title}
       />
+      {searchOpen ? (
+        <SearchPanel
+          query={query}
+          onQuery={setQuery}
+          hits={searchPending ? [] : hits}
+          current={hitIndex}
+          onPrev={() => pickHit(wrapIndex(hitIndex, -1, hits.length))}
+          onNext={() => pickHit(wrapIndex(hitIndex, 1, hits.length))}
+          onPick={pickHit}
+          onClose={closeSearch}
+          loading={searchLoading}
+          noText={noText}
+          pending={searchPending}
+        />
+      ) : null}
       <div className="flex min-h-0 flex-1">
       <div ref={containerRef} className="min-h-0 min-w-0 flex-1 overflow-auto bg-muted/60 px-4 py-6">
         {!pdf ? (
           <p className="text-center text-sm text-muted-foreground">Opening…</p>
         ) : viewMode === "page" ? (
-          <PdfPage pdf={pdf} pageNumber={page} scale={zoom} theme={pageTheme} highlights={pageHighlights(page)} searchQuery={searchQuery} />
+          <PdfPage pdf={pdf} pageNumber={page} scale={zoom} theme={pageTheme} highlights={pageHighlights(page)} searchQuery={searchOpen ? debouncedQuery : ""} />
         ) : (
           <div className="flex flex-col gap-6">
             {Array.from({ length: pdf.numPages }, (_, i) => i + 1).map((n) => (
               <LazyPage key={n} pageNumber={n} minHeight={(baseSize?.h ?? 792) * zoom} root={containerRef}>
-                <PdfPage pdf={pdf} pageNumber={n} scale={zoom} theme={pageTheme} highlights={pageHighlights(n)} searchQuery={searchQuery} />
+                <PdfPage pdf={pdf} pageNumber={n} scale={zoom} theme={pageTheme} highlights={pageHighlights(n)} searchQuery={searchOpen ? debouncedQuery : ""} />
               </LazyPage>
             ))}
           </div>

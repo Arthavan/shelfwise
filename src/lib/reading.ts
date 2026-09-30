@@ -82,3 +82,9 @@ export function searchPages(texts: string[], query: string, maxResults = 200): S
   }
   return hits;
 }
+
+/** Next/previous index in a list of `count` items, wrapping at both ends. */
+export function wrapIndex(index: number, delta: number, count: number): number {
+  if (count < 1) return 0;
+  return (((index + delta) % count) + count) % count;
+}
