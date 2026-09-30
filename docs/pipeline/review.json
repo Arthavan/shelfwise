@@ -1,37 +1,29 @@
 {
-  "verdict": "fail",
+  "verdict": "pass",
   "findings": [
     {
       "id": "R1",
-      "severity": "major",
-      "file": "src/lib/data/maintenance.ts",
-      "line": 33,
-      "problem": "First-run seeding wipes real user data. ensureInitialized() decides 'first run' only from the missing AppSettings row, then calls replaceWithDemoData(), which runs book.deleteMany({}) before inserting the demo shelf. The pages that never read the DB (/books/new and /settings are static) and the mutating actions (createBook in src/app/books/actions.ts:25, deleteAllBooks, updateBookStatus) never call ensureInitialized. So on a fresh DB (`npm install && npm run dev`, where predev only runs `migrate deploy`), a user whose first page is /books/new can save a book and get the 'Book added' toast. The redirect to / then calls listBooks() → ensureInitialized(), which deletes that book and shows the 12 demo books instead. Reproduced with a scratch DB and headless Chromium: after the 'Book added' toast, / showed 12 cards and 0 'My Real First Book'; the DB had books=12, mine=0. A related case: 'Delete all books' as the first action on /settings is undone by a demo re-seed on the next / visit, right after the 'All books deleted' toast.",
-      "fix": "Make first-run initialization non-destructive, and run it before any write. In ensureInitialized, inside one $transaction: if the AppSettings row is missing, create it; seed the demo books only when book.count() === 0, and never deleteMany there. Also call ensureInitialized(db) at the start of createBook, updateBook, updateBookStatus, rateBook, clearRating, deleteBook and deleteAllBooks. Restore and the test reset may keep their destructive replaceWithDemoData. Add an e2e or unit test: on a DB with no AppSettings row and one existing book, ensureInitialized keeps the book."
+      "severity": "minor",
+      "file": "src/components/books/library-toolbar.tsx",
+      "line": 39,
+      "problem": "The search box can overwrite what the user typed. Every debounced keystroke calls router.replace, and each navigation commits on its own. The resync effect treats any params.q that differs from the LAST value pushed as an external change, then calls setValue(params.q) and clears the pending timer. When a round-trip takes longer than the pause between keystrokes, the commit for an older value (for example q=t) lands after lastPushed has moved on to 'to' or 'tol'. The input then jumps back and keystrokes are lost. Reproduced against `next start` in headless Chromium, with CDP adding 400–800 ms latency and 350–500 ms pauses between keys. Typing 'tolkien' ended with both the input and the URL reading 'tolin', 'toie' or 'tlin'. It did not reproduce on localhost, where round-trips took 30–60 ms in dev and prod, so it only bites on slow machines or hosted deploys. It breaks the ARCHITECTURE §6.4 promise that typing is never clobbered.",
+      "fix": "Treat every value this input pushed as its own echo, not just the last one. Keep a ref queue of pushed q values. In the effect, if params.q is in the queue, drop the entries up to and including it and return. Resync only for values that were never pushed (a tab click, 'Clear search', Back). Another option: wrap router.replace in startTransition and skip resyncing while that transition is pending."
     },
     {
       "id": "R2",
-      "severity": "major",
-      "file": "src/app/api/test/reset/route.ts",
-      "line": 12,
-      "problem": "The destructive test-reset hook is on by default whenever NODE_ENV !== 'production', which covers `npm run dev`, the documented way to run this local app. It has no Origin or CSRF check, and it JSON-parses the body whatever the Content-Type. Any website open in the user's browser can therefore send a CORS 'simple' request (fetch with a text/plain body, no preflight) to http://localhost:3000/api/test/reset with {\"mode\":\"empty\"} and hard-delete the whole library. Reproduced: a POST with Origin: https://evil.example and Content-Type: text/plain returned 200 {ok:true,mode:'empty',count:0}, and the books table was empty afterwards. ARCHITECTURE §6.3 argues it 'duplicates behaviour already reachable from Settings', but Settings uses server actions, which Next.js Origin-checks; this route handler has no such check. A second path to data loss: playwright.config.ts has reuseExistingServer: !CI, so running `npx playwright test` while `npm run dev` is up on :3000 reuses that server, and the tests' reset calls wipe dev.db.",
-      "fix": "Gate the hook only on process.env.E2E_TEST_HOOKS === '1' (the Playwright webServer already sets it) and remove the NODE_ENV fallback. Also reject requests whose Content-Type is not application/json (this forces a CORS preflight), or whose Origin header is present and does not match the request host, with 403. With this gating, a reused dev server answers 404 and the e2e run fails loudly instead of wiping dev.db."
+      "severity": "minor",
+      "file": "src/components/books/delete-book-button.tsx",
+      "line": 46,
+      "problem": "After a confirmed delete, Back shows the deleted book as if it still existed. deleteBook deliberately skips revalidatePath (D11), and the client uses router.push('/'), so the detail page stays in history with its cached RSC payload. Reproduced: open Station Eleven from / → Delete → confirm → browser Back. That showed /books/demo-station-eleven with h1 'Station Eleven' and live controls. Changing its status there toasted the generic \"Couldn't save changes. Try again.\", which is misleading because the book is gone and retrying can't work. A status change, which does revalidate, followed by Back shows fresh data, so the delete path is the only one affected.",
+      "fix": "Use router.replace('/') instead of router.push('/') in handleConfirm, so the deleted book's detail entry leaves history. In the probe, the earlier '/' entry refetched fresh (0 Station Eleven cards). Optionally, StatusSelect and RatingControl could show result.error when it is 'Book not found' instead of the generic retry message."
     },
     {
       "id": "R3",
       "severity": "minor",
-      "file": "src/components/books/library-toolbar.tsx",
-      "line": 90,
-      "problem": "The 'Sort by' select is fully controlled by the server-derived params.sort. After the user picks an option, React puts the DOM value back to the old sort until the router.replace round-trip re-renders the page. Measured in the browser: the value read 'recent' while the URL still had no sort, then became 'title' once the navigation completed. On a slow round-trip the control looks like it ignored the choice, and users re-select.",
-      "fix": "Keep the sort value in local state, or in useOptimistic inside a transition wrapping router.replace. Set it in handleSort and re-sync it from params.sort when params change."
-    },
-    {
-      "id": "R4",
-      "severity": "minor",
-      "file": "src/components/books/status-tabs.tsx",
-      "line": 24,
-      "problem": "The status filter uses the ARIA tabs pattern (role=tablist/tab with aria-selected), but no role=tabpanel or aria-controls links a tab to the book list, and there is no arrow-key navigation. Screen readers announce 'tab 1 of 4' and users expect Left/Right to move between tabs, but only Tab works because each tab is a separate link.",
-      "fix": "Keep the tested role/name contract and complete the pattern. Give each tab an id; wrap the content region in (library)/page.tsx in role=\"tabpanel\" with aria-labelledby set to the selected tab's id. Add a small client wrapper with roving tabindex: tabIndex=0 on the selected tab and -1 on the others, with ArrowLeft/ArrowRight/Home/End moving focus between tabs."
+      "file": "docs/pipeline/ARCHITECTURE.md",
+      "line": 504,
+      "problem": "The binding architecture contract still describes the two behaviours that round 1 fixed as data-loss bugs. §6.3 (line 504) enables the reset hook when `NODE_ENV !== \"production\"`, and §9 (line 634) says it is 'always on in dev'. §8 (lines 620–623) says ensureInitialized runs the destructive replaceWithDemoData on first run. The code now correctly gates the hook on E2E_TEST_HOOKS === '1' plus a JSON/Origin check, and seeds without ever deleting. A later fixer or builder who treats ARCHITECTURE.md as the source of truth could 'restore conformance' and bring both bugs back.",
+      "fix": "Update §6.3, §8 and §9 to match the code. The hook is enabled only when E2E_TEST_HOOKS=1, requires Content-Type application/json, and rejects a foreign Origin with 403. ensureInitialized runs in one transaction that creates the AppSettings marker and inserts the demo rows only when the book table is empty; it never deletes. It is called from every read helper and every mutating action."
     }
   ],
   "missing_acs": []
