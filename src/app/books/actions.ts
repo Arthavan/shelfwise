@@ -6,6 +6,7 @@ import { applyFormToLifecycle, initialLifecycle } from "@/lib/book-rules";
 import { ERROR_TOAST } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { toBook } from "@/lib/data/books";
+import { ensureInitialized } from "@/lib/data/maintenance";
 import type { ActionResult } from "@/lib/types";
 import { bookFormSchema, idSchema, toBookData } from "@/lib/validation";
 
@@ -28,6 +29,7 @@ export async function createBook(values: unknown): Promise<IdResult> {
   const form = parsed.data;
 
   try {
+    await ensureInitialized(db);
     const lifecycle = initialLifecycle(form.status, form.rating, new Date());
     const created = await db.book.create({
       data: {
@@ -54,6 +56,7 @@ export async function updateBook(id: string, values: unknown): Promise<IdResult>
   const form = parsed.data;
 
   try {
+    await ensureInitialized(db);
     const row = await db.book.findFirst({ where: { id: parsedId.data, deletedAt: null } });
     if (!row) return { ok: false, error: "Book not found" };
 

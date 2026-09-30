@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { ERROR_TOAST } from "@/lib/constants";
 import { db } from "@/lib/db";
-import { purgeSoftDeleted } from "@/lib/data/maintenance";
+import { ensureInitialized, purgeSoftDeleted } from "@/lib/data/maintenance";
 import type { ActionResult } from "@/lib/types";
 import { idSchema } from "@/lib/validation";
 
@@ -20,6 +20,7 @@ export async function deleteBook(input: { id: string }): Promise<ActionResult<{ 
   if (!parsed.success) return { ok: false, error: ERROR_TOAST };
   const id = parsed.data;
   try {
+    await ensureInitialized(db);
     const now = new Date();
     await purgeSoftDeleted(db, new Date(now.getTime() - UNDO_WINDOW_MS));
     const book = await db.book.findFirst({ where: { id, deletedAt: null } });
@@ -37,6 +38,7 @@ export async function restoreBook(input: { id: string }): Promise<ActionResult<{
   if (!parsed.success) return { ok: false, error: ERROR_TOAST };
   const id = parsed.data;
   try {
+    await ensureInitialized(db);
     const book = await db.book.findFirst({ where: { id, deletedAt: { not: null } } });
     if (!book) return { ok: false, error: NOT_FOUND };
     await db.book.update({ where: { id }, data: { deletedAt: null } });

@@ -1,0 +1,38 @@
+{
+  "verdict": "fail",
+  "findings": [
+    {
+      "id": "R1",
+      "severity": "major",
+      "file": "src/lib/data/maintenance.ts",
+      "line": 33,
+      "problem": "First-run seeding wipes real user data. ensureInitialized() decides 'first run' only from the missing AppSettings row, then calls replaceWithDemoData(), which runs book.deleteMany({}) before inserting the demo shelf. The pages that never read the DB (/books/new and /settings are static) and the mutating actions (createBook in src/app/books/actions.ts:25, deleteAllBooks, updateBookStatus) never call ensureInitialized. So on a fresh DB (`npm install && npm run dev`, where predev only runs `migrate deploy`), a user whose first page is /books/new can save a book and get the 'Book added' toast. The redirect to / then calls listBooks() → ensureInitialized(), which deletes that book and shows the 12 demo books instead. Reproduced with a scratch DB and headless Chromium: after the 'Book added' toast, / showed 12 cards and 0 'My Real First Book'; the DB had books=12, mine=0. A related case: 'Delete all books' as the first action on /settings is undone by a demo re-seed on the next / visit, right after the 'All books deleted' toast.",
+      "fix": "Make first-run initialization non-destructive, and run it before any write. In ensureInitialized, inside one $transaction: if the AppSettings row is missing, create it; seed the demo books only when book.count() === 0, and never deleteMany there. Also call ensureInitialized(db) at the start of createBook, updateBook, updateBookStatus, rateBook, clearRating, deleteBook and deleteAllBooks. Restore and the test reset may keep their destructive replaceWithDemoData. Add an e2e or unit test: on a DB with no AppSettings row and one existing book, ensureInitialized keeps the book."
+    },
+    {
+      "id": "R2",
+      "severity": "major",
+      "file": "src/app/api/test/reset/route.ts",
+      "line": 12,
+      "problem": "The destructive test-reset hook is on by default whenever NODE_ENV !== 'production', which covers `npm run dev`, the documented way to run this local app. It has no Origin or CSRF check, and it JSON-parses the body whatever the Content-Type. Any website open in the user's browser can therefore send a CORS 'simple' request (fetch with a text/plain body, no preflight) to http://localhost:3000/api/test/reset with {\"mode\":\"empty\"} and hard-delete the whole library. Reproduced: a POST with Origin: https://evil.example and Content-Type: text/plain returned 200 {ok:true,mode:'empty',count:0}, and the books table was empty afterwards. ARCHITECTURE §6.3 argues it 'duplicates behaviour already reachable from Settings', but Settings uses server actions, which Next.js Origin-checks; this route handler has no such check. A second path to data loss: playwright.config.ts has reuseExistingServer: !CI, so running `npx playwright test` while `npm run dev` is up on :3000 reuses that server, and the tests' reset calls wipe dev.db.",
+      "fix": "Gate the hook only on process.env.E2E_TEST_HOOKS === '1' (the Playwright webServer already sets it) and remove the NODE_ENV fallback. Also reject requests whose Content-Type is not application/json (this forces a CORS preflight), or whose Origin header is present and does not match the request host, with 403. With this gating, a reused dev server answers 404 and the e2e run fails loudly instead of wiping dev.db."
+    },
+    {
+      "id": "R3",
+      "severity": "minor",
+      "file": "src/components/books/library-toolbar.tsx",
+      "line": 90,
+      "problem": "The 'Sort by' select is fully controlled by the server-derived params.sort. After the user picks an option, React puts the DOM value back to the old sort until the router.replace round-trip re-renders the page. Measured in the browser: the value read 'recent' while the URL still had no sort, then became 'title' once the navigation completed. On a slow round-trip the control looks like it ignored the choice, and users re-select.",
+      "fix": "Keep the sort value in local state, or in useOptimistic inside a transition wrapping router.replace. Set it in handleSort and re-sync it from params.sort when params change."
+    },
+    {
+      "id": "R4",
+      "severity": "minor",
+      "file": "src/components/books/status-tabs.tsx",
+      "line": 24,
+      "problem": "The status filter uses the ARIA tabs pattern (role=tablist/tab with aria-selected), but no role=tabpanel or aria-controls links a tab to the book list, and there is no arrow-key navigation. Screen readers announce 'tab 1 of 4' and users expect Left/Right to move between tabs, but only Tab works because each tab is a separate link.",
+      "fix": "Keep the tested role/name contract and complete the pattern. Give each tab an id; wrap the content region in (library)/page.tsx in role=\"tabpanel\" with aria-labelledby set to the selected tab's id. Add a small client wrapper with roving tabindex: tabIndex=0 on the selected tab and -1 on the others, with ArrowLeft/ArrowRight/Home/End moving focus between tabs."
+    }
+  ],
+  "missing_acs": []
+}

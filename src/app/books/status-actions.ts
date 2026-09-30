@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { applyStatusChange } from "@/lib/book-rules";
 import { ERROR_TOAST } from "@/lib/constants";
 import { db } from "@/lib/db";
+import { ensureInitialized } from "@/lib/data/maintenance";
 import type { ActionResult, BookStatus } from "@/lib/types";
 import { idSchema, rateSchema, statusChangeSchema } from "@/lib/validation";
 
@@ -23,6 +24,7 @@ export async function updateBookStatus(input: {
   if (!parsed.success) return { ok: false, error: ERROR_TOAST };
   const { id, status } = parsed.data;
   try {
+    await ensureInitialized(db);
     const book = await db.book.findFirst({ where: { id, deletedAt: null } });
     if (!book) return { ok: false, error: NOT_FOUND };
     const current = {
@@ -57,6 +59,7 @@ export async function rateBook(input: {
   if (!parsed.success) return { ok: false, error: ERROR_TOAST };
   const { id, rating } = parsed.data;
   try {
+    await ensureInitialized(db);
     const book = await db.book.findFirst({ where: { id, deletedAt: null } });
     if (!book) return { ok: false, error: NOT_FOUND };
     if (book.status !== "finished") return { ok: false, error: "Only finished books can be rated" };
@@ -73,6 +76,7 @@ export async function clearRating(input: { id: string }): Promise<ActionResult<{
   if (!parsed.success) return { ok: false, error: ERROR_TOAST };
   const id = parsed.data;
   try {
+    await ensureInitialized(db);
     const book = await db.book.findFirst({ where: { id, deletedAt: null } });
     if (!book) return { ok: false, error: NOT_FOUND };
     await db.book.update({ where: { id }, data: { rating: null } });

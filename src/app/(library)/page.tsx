@@ -5,7 +5,7 @@ import { ClearSearchButton } from "@/components/books/clear-search-button";
 import { LibraryEmpty } from "@/components/books/library-empty";
 import { LibraryToolbar } from "@/components/books/library-toolbar";
 import { PickNextRead } from "@/components/books/pick-next-read";
-import { StatusTabs } from "@/components/books/status-tabs";
+import { LIBRARY_PANEL_ID, StatusTabs, statusTabId } from "@/components/books/status-tabs";
 import { listBooks } from "@/lib/data/books";
 import { buildLibraryHref, countByStatus, filterAndSortBooks, parseLibraryParams } from "@/lib/library";
 
@@ -45,15 +45,17 @@ export default async function LibraryPage({
         </div>
       </header>
       <StatusTabs params={params} counts={counts} />
-      <div className="mt-4">
-        <LibraryToolbar params={params} />
-      </div>
-      {params.status === "want" && counts.want > 0 ? (
+      <div role="tabpanel" id={LIBRARY_PANEL_ID} aria-labelledby={statusTabId(params.status)}>
         <div className="mt-4">
-          <PickNextRead candidates={candidates} />
+          <LibraryToolbar params={params} />
         </div>
-      ) : null}
-      <div className="mt-6">{content}</div>
+        {params.status === "want" && counts.want > 0 ? (
+          <div className="mt-4">
+            <PickNextRead candidates={candidates} />
+          </div>
+        ) : null}
+        <div className="mt-6">{content}</div>
+      </div>
     </div>
   );
 }

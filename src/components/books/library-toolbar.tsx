@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useOptimistic, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Search } from "lucide-react";
 
@@ -27,6 +27,9 @@ export function LibraryToolbar({ params }: LibraryToolbarProps) {
   const lastPushed = useRef(params.q);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latest = useRef(params);
+  // The select shows the picked sort right away; once the navigation settles it follows the URL again.
+  const [, startSortTransition] = useTransition();
+  const [sort, setOptimisticSort] = useOptimistic(params.sort);
 
   useEffect(() => {
     latest.current = params;
@@ -55,6 +58,7 @@ export function LibraryToolbar({ params }: LibraryToolbarProps) {
       const q = next.trim();
       if (q === lastPushed.current) return;
       lastPushed.current = q;
+      latest.current = { ...latest.current, q };
       router.replace(buildLibraryHref(latest.current, { q }), { scroll: false });
     }, DEBOUNCE_MS);
   }
@@ -62,7 +66,13 @@ export function LibraryToolbar({ params }: LibraryToolbarProps) {
   function handleSort(event: React.ChangeEvent<HTMLSelectElement>) {
     const next = event.target.value;
     if (!isSortKey(next)) return;
-    router.replace(buildLibraryHref(latest.current, { sort: next }), { scroll: false });
+    // Keep the latest params in step, so a search typed before the URL updates keeps this sort.
+    latest.current = { ...latest.current, sort: next };
+    const href = buildLibraryHref(latest.current, { sort: next });
+    startSortTransition(() => {
+      setOptimisticSort(next);
+      router.replace(href, { scroll: false });
+    });
   }
 
   return (
@@ -87,7 +97,7 @@ export function LibraryToolbar({ params }: LibraryToolbarProps) {
         <label htmlFor="sort" className="sr-only whitespace-nowrap text-sm text-muted-foreground sm:not-sr-only">
           Sort by
         </label>
-        <NativeSelect id="sort" value={params.sort} onChange={handleSort} wrapperClassName="w-full sm:w-44">
+        <NativeSelect id="sort" value={sort} onChange={handleSort} wrapperClassName="w-full sm:w-44">
           {SORT_OPTIONS.map((option) => (
             <option key={option.value} value={option.value}>
               {option.label}
