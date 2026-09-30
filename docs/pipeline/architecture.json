@@ -1,0 +1,162 @@
+{
+  "stack": {
+    "framework": "Next.js 16 (App Router, src/ dir, Turbopack)",
+    "language": "TypeScript (strict)",
+    "styling": "Tailwind CSS v4 + shadcn/ui (new-york), lucide-react icons",
+    "db": "SQLite (file:./dev.db; e2e uses file:./e2e.db)",
+    "orm": "Prisma ORM 7 (prisma-client generator -> src/generated/prisma, @prisma/adapter-better-sqlite3, prisma.config.ts)",
+    "auth": "none",
+    "validation": "zod v4 (shared client/server schemas in src/lib/validation.ts)",
+    "forms": "react-hook-form + @hookform/resolvers/zod",
+    "toasts": "sonner (shadcn)",
+    "theme": "next-themes (class strategy, default system)",
+    "unit": "vitest",
+    "e2e": "playwright"
+  },
+  "routes": [
+    { "path": "/", "purpose": "Library: status tabs (?status=want|reading|finished), search (?q=), sort (?sort=recent|title|author|rating), book cards with inline status select and rating, empty states, Pick my next read on Want to read tab", "auth": false, "example_path": "/" },
+    { "path": "/?status=want", "purpose": "Library filtered to Want to read (shows Pick my next read)", "auth": false, "example_path": "/?status=want" },
+    { "path": "/books/new", "purpose": "Add book form (Save book)", "auth": false, "example_path": "/books/new" },
+    { "path": "/books/[id]", "purpose": "Book detail: h1 title, author, status select, rating, pages, notes, Added/Started/Finished on dates, Edit and Delete (with Undo)", "auth": false, "example_path": "/books/demo-the-hobbit" },
+    { "path": "/books/[id]/edit", "purpose": "Edit book form prefilled (Save changes)", "auth": false, "example_path": "/books/demo-circe/edit" },
+    { "path": "/stats", "purpose": "Stat cards, Reading goal card, Finished per month chart (12 bars), Rating distribution; 'No stats yet' when empty", "auth": false, "example_path": "/stats" },
+    { "path": "/settings", "purpose": "Theme radiogroup (Light/Dark/System), Restore demo data, Delete all books (both confirmed)", "auth": false, "example_path": "/settings" },
+    { "path": "/books/[id] (unknown id)", "purpose": "Book not found state with Back to library link (books/[id]/not-found.tsx)", "auth": false, "example_path": "/books/does-not-exist" },
+    { "path": "* (any unmatched route)", "purpose": "Page not found with Back to library link (app/not-found.tsx)", "auth": false, "example_path": "/does-not-exist" },
+    { "path": "/api/test/reset", "purpose": "POST-only e2e reset hook {mode: demo|empty}; 404 unless E2E_TEST_HOOKS=1 or NODE_ENV!=production", "auth": false, "example_path": "/api/test/reset" }
+  ],
+  "models": [
+    {
+      "name": "Book",
+      "fields": [
+        "id String @id @default(cuid())",
+        "title String",
+        "author String",
+        "status String @default(\"want\")",
+        "pages Int?",
+        "notes String?",
+        "rating Int?",
+        "startedAt DateTime?",
+        "finishedAt DateTime?",
+        "deletedAt DateTime?",
+        "createdAt DateTime @default(now())",
+        "updatedAt DateTime @updatedAt",
+        "@@index([deletedAt, createdAt])",
+        "@@index([status])",
+        "@@index([finishedAt])"
+      ]
+    },
+    {
+      "name": "AppSettings",
+      "fields": [
+        "id String @id @default(\"app\")",
+        "goalYear Int?",
+        "goalTarget Int?",
+        "seededAt DateTime?",
+        "createdAt DateTime @default(now())",
+        "updatedAt DateTime @updatedAt"
+      ]
+    }
+  ],
+  "api": [
+    { "kind": "server_action", "name_or_path": "createBook (src/app/books/actions.ts)", "purpose": "Validate BookFormValues, create book with initialLifecycle; returns ActionResult<{id}>; client toasts 'Book added' and pushes /" },
+    { "kind": "server_action", "name_or_path": "updateBook (src/app/books/actions.ts)", "purpose": "Validate (id, BookFormValues), apply applyFormToLifecycle; returns ActionResult<{id}>; client toasts 'Changes saved' and pushes /books/{id}" },
+    { "kind": "server_action", "name_or_path": "updateBookStatus (src/app/books/status-actions.ts)", "purpose": "{id,status} -> applyStatusChange (dates/rating rules); client toasts 'Moved to Want to read' | 'Moved to Reading' | 'Marked as finished'" },
+    { "kind": "server_action", "name_or_path": "rateBook (src/app/books/status-actions.ts)", "purpose": "{id,rating 1..5} on finished books only; client toasts 'Rated N out of 5'" },
+    { "kind": "server_action", "name_or_path": "clearRating (src/app/books/status-actions.ts)", "purpose": "{id} sets rating null; client toasts 'Rating cleared'" },
+    { "kind": "server_action", "name_or_path": "deleteBook (src/app/books/delete-actions.ts)", "purpose": "{id} soft delete (deletedAt=now), purge soft-deletes older than 10 min, NO revalidatePath; client pushes / and toasts 'Book deleted' with Undo (6s)" },
+    { "kind": "server_action", "name_or_path": "restoreBook (src/app/books/delete-actions.ts)", "purpose": "{id} clears deletedAt (exact restore); client toasts 'Book restored'" },
+    { "kind": "server_action", "name_or_path": "setReadingGoal (src/app/stats/actions.ts)", "purpose": "{target 1..999} upsert AppSettings goal for current year; toast 'Goal saved'; error 'Enter a whole number from 1 to 999'" },
+    { "kind": "server_action", "name_or_path": "clearReadingGoal (src/app/stats/actions.ts)", "purpose": "Remove goal; toast 'Goal removed'" },
+    { "kind": "server_action", "name_or_path": "restoreDemoData (src/app/settings/actions.ts)", "purpose": "Hard-replace all books with the 12 demo books (fixed ids demo-<slug>, relative dates) and clear goal; toast 'Demo data restored'" },
+    { "kind": "server_action", "name_or_path": "deleteAllBooks (src/app/settings/actions.ts)", "purpose": "Hard-delete every book (keeps AppSettings so no re-seed); toast 'All books deleted'" },
+    { "kind": "route", "name_or_path": "POST /api/test/reset", "purpose": "E2E-only: body {mode:'demo'|'empty'} resets DB to demo set or empty (goal cleared); 200 {ok,mode,count}; 404 when disabled" }
+  ],
+  "env": [
+    { "name": "DATABASE_URL", "required": false, "example": "file:./dev.db", "description": "SQLite database file. Defaults to file:./dev.db in prisma.config.ts and src/lib/db.ts; Playwright webServer sets file:./e2e.db." },
+    { "name": "E2E_TEST_HOOKS", "required": false, "example": "1", "description": "When '1', enables POST /api/test/reset in production builds (always enabled when NODE_ENV!=production). Set only by the Playwright webServer." }
+  ],
+  "dependencies": [
+    "@prisma/client",
+    "@prisma/adapter-better-sqlite3",
+    "prisma",
+    "dotenv",
+    "tsx",
+    "server-only",
+    "zod",
+    "react-hook-form",
+    "@hookform/resolvers",
+    "next-themes",
+    "sonner",
+    "lucide-react",
+    "clsx",
+    "tailwind-merge",
+    "class-variance-authority",
+    "tw-animate-css",
+    "vitest",
+    "@playwright/test"
+  ],
+  "shadcn_components": ["button", "input", "textarea", "label", "card", "badge", "dialog", "alert-dialog", "radio-group", "sonner", "skeleton", "separator", "tooltip"],
+  "scripts": {
+    "postinstall": "prisma generate",
+    "predev": "prisma migrate deploy",
+    "dev": "next dev",
+    "build": "prisma generate && next build",
+    "prestart": "prisma migrate deploy",
+    "start": "next start",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "db:migrate": "prisma migrate dev",
+    "db:seed": "prisma db seed",
+    "db:reset": "prisma migrate reset --force && prisma db seed"
+  },
+  "e2e_config": {
+    "workers": 1,
+    "fullyParallel": false,
+    "retries": 1,
+    "webServer": {
+      "command": "npm run db:reset && npm run build && npm run start",
+      "url": "http://localhost:3000",
+      "env": { "DATABASE_URL": "file:./e2e.db", "E2E_TEST_HOOKS": "1", "PORT": "3000" }
+    },
+    "reset_helper": "tests/e2e/helpers.ts resetData(request, 'demo'|'empty') -> POST /api/test/reset"
+  },
+  "ac_map": {
+    "AC-1": ["/", "/books/new", "components/layout/site-header.tsx (link 'Add book')", "components/books/book-form.tsx"],
+    "AC-2": ["/books/new", "lib/validation.ts bookFormSchema", "components/books/book-form.tsx"],
+    "AC-3": ["/books/new", "/", "createBook", "components/books/book-card.tsx"],
+    "AC-4": ["/books/new", "lib/validation.ts bookFormSchema (pages)"],
+    "AC-5": ["/books/new", "components/books/rating-input.tsx"],
+    "AC-6": ["/", "lib/library.ts countByStatus", "components/books/status-tabs.tsx", "lib/data/books.ts listBooks"],
+    "AC-7": ["/?status=finished", "lib/library.ts filterAndSortBooks", "components/books/status-tabs.tsx"],
+    "AC-8": ["/", "deleteAllBooks", "components/books/library-empty.tsx"],
+    "AC-9": ["/?status=reading", "createBook", "components/books/library-empty.tsx"],
+    "AC-10": ["/", "updateBookStatus", "components/books/status-select.tsx", "lib/book-rules.ts applyStatusChange"],
+    "AC-11": ["/", "updateBookStatus", "components/books/rating-control.tsx"],
+    "AC-12": ["/books/[id]", "updateBookStatus", "components/books/book-details.tsx", "lib/format.ts formatDate"],
+    "AC-13": ["/books/[id]", "/", "rateBook", "components/books/rating-control.tsx"],
+    "AC-14": ["/", "/books/demo-piranesi", "components/books/book-card.tsx", "components/books/rating-control.tsx"],
+    "AC-15": ["/books/demo-the-hobbit", "clearRating", "components/books/rating-control.tsx"],
+    "AC-16": ["/books/demo-dune", "updateBookStatus", "lib/book-rules.ts applyStatusChange"],
+    "AC-17": ["/stats", "lib/stats.ts computeStats", "components/stats/stat-card.tsx"],
+    "AC-18": ["/stats", "lib/stats.ts computeStats", "components/stats/rating-distribution.tsx"],
+    "AC-19": ["/", "/stats", "updateBookStatus", "lib/stats.ts computeStats"],
+    "AC-20": ["/stats", "components/stats/monthly-chart.tsx", "lib/stats.ts computeStats"],
+    "AC-21": ["/stats", "deleteAllBooks", "components/common/empty-state.tsx"],
+    "AC-22": ["/", "/books/[id]", "components/books/book-card.tsx", "components/books/book-details.tsx"],
+    "AC-23": ["/books/[id]/edit", "/books/[id]", "updateBook", "components/books/book-form.tsx"],
+    "AC-24": ["/books/does-not-exist", "app/books/[id]/not-found.tsx"],
+    "AC-25": ["/books/demo-educated", "components/books/delete-book-button.tsx", "components/common/confirm-dialog.tsx"],
+    "AC-26": ["/books/demo-educated", "/", "deleteBook", "components/books/delete-book-button.tsx"],
+    "AC-27": ["/", "restoreBook", "components/books/delete-book-button.tsx"],
+    "AC-28": ["/?q=tolkien", "components/books/library-toolbar.tsx", "lib/library.ts filterAndSortBooks"],
+    "AC-29": ["/?q=zzzz", "/", "components/books/library-empty.tsx", "components/books/clear-search-button.tsx"],
+    "AC-30": ["/?sort=title", "components/books/library-toolbar.tsx", "lib/library.ts filterAndSortBooks"],
+    "AC-31": ["/settings", "/", "deleteAllBooks", "components/settings/data-actions.tsx"],
+    "AC-32": ["/settings", "/", "restoreDemoData", "components/settings/data-actions.tsx", "lib/demo-data.ts"],
+    "AC-33": ["/", "components/layout/theme-toggle.tsx", "components/layout/theme-provider.tsx"],
+    "AC-34": ["/", "/stats", "components/layout/site-header.tsx", "components/layout/main-nav.tsx", "components/stats/monthly-chart.tsx"],
+    "AC-35": ["/stats", "setReadingGoal", "components/stats/goal-card.tsx", "components/stats/goal-dialog.tsx"],
+    "AC-36": ["/?status=want", "updateBookStatus", "components/books/pick-next-read.tsx"]
+  }
+}
