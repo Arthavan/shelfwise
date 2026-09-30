@@ -4,7 +4,9 @@ import type { BookFormValues } from "./types";
 import {
   bookFormSchema,
   goalSchema,
+  highlightAddSchema,
   idSchema,
+  progressSchema,
   rateSchema,
   resetSchema,
   statusChangeSchema,
@@ -132,5 +134,30 @@ describe("resetSchema", () => {
   it("accepts demo and empty only", () => {
     expect(resetSchema.parse({ mode: "empty" })).toEqual({ mode: "empty" });
     expect(resetSchema.safeParse({ mode: "wipe" }).success).toBe(false);
+  });
+});
+
+describe("progressSchema", () => {
+  const ok = { id: "b1", location: "3", percent: 60, zoom: 1.25, viewMode: "page", pageTheme: "light" } as const;
+  it("accepts a valid payload, including a null zoom", () => {
+    expect(progressSchema.safeParse(ok).success).toBe(true);
+    expect(progressSchema.safeParse({ ...ok, zoom: null }).success).toBe(true);
+  });
+  it("rejects out-of-range percent and zoom, empty location and unknown enums", () => {
+    expect(progressSchema.safeParse({ ...ok, percent: 101 }).success).toBe(false);
+    expect(progressSchema.safeParse({ ...ok, percent: 1.5 }).success).toBe(false);
+    expect(progressSchema.safeParse({ ...ok, zoom: 4 }).success).toBe(false);
+    expect(progressSchema.safeParse({ ...ok, location: "" }).success).toBe(false);
+    expect(progressSchema.safeParse({ ...ok, viewMode: "spread" }).success).toBe(false);
+    expect(progressSchema.safeParse({ ...ok, pageTheme: "blue" }).success).toBe(false);
+  });
+});
+
+describe("highlightAddSchema", () => {
+  const rect = { x: 0.1, y: 0.1, w: 0.2, h: 0.02 };
+  const ok = { id: "b1", page: 1, rects: [rect], cfiRange: null, text: "hi", color: "yellow" } as const;
+  it("tolerates up to 400 rects and rejects more", () => {
+    expect(highlightAddSchema.safeParse({ ...ok, rects: Array(400).fill(rect) }).success).toBe(true);
+    expect(highlightAddSchema.safeParse({ ...ok, rects: Array(401).fill(rect) }).success).toBe(false);
   });
 });

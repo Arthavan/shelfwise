@@ -10,6 +10,7 @@ A calm, private personal reading list. Save books with a title and author, move 
 - **Ratings** (1–5 stars) for finished books only, with clear rating.
 - **Stats**: totals by status, finished this year, pages read, average rating, a 12-month "Finished per month" chart and rating distribution.
 - **Search and sort**: search title or author, sort by recent, title, author or rating. Both are kept in the URL.
+- **Read in the app**: upload a PDF or EPUB to a book and read it in Shelfwise, with automatic resume, bookmarks, highlights with notes, in-book search, zoom, page/scroll modes and page themes. PDF is the primary format, EPUB is supported too. One file per book, up to 100 MB by default, and no OCR (scanned PDFs without a text layer cannot be searched or highlighted).
 - **Delete with undo** (soft delete, restored exactly).
 - **Yearly reading goal** with a progress bar.
 - **Pick my next read**: a random pick from your Want to read list.
@@ -31,11 +32,17 @@ Captured by the pipeline (light theme) in [`docs/pipeline/screens/`](docs/pipeli
 Requires Node 20+ (22 recommended).
 
 ```bash
-npm install                 # also runs `prisma generate`
+npm install                 # also runs `prisma generate` and copies the pdf.js worker
 cp .env.example .env        # optional; defaults work without it
 npm run db:reset            # apply migrations and seed the demo data
 npm run dev                 # http://localhost:3000 (applies migrations first)
 ```
+
+Optional settings in `.env` (see `.env.example`):
+
+- `DATABASE_URL`: SQLite file, defaults to `file:./dev.db`.
+- `DATA_DIR`: where uploaded book files are stored, defaults to `./data`.
+- `MAX_UPLOAD_MB`: upload size cap in MB, defaults to 100.
 
 The demo data is also seeded automatically the first time the app reads an empty, new database.
 
@@ -43,8 +50,8 @@ The demo data is also seeded automatically the first time the app reads an empty
 
 | Script | Purpose |
 | --- | --- |
-| `npm run dev` | Dev server (runs `prisma migrate deploy` first) |
-| `npm run build` | `prisma generate` and production build |
+| `npm run dev` | Dev server (runs `prisma migrate deploy` and copies the pdf.js worker first) |
+| `npm run build` | `prisma generate`, copy the pdf.js worker into `public/`, and production build |
 | `npm run start` | Production server (runs `prisma migrate deploy` first) |
 | `npm run lint` | ESLint |
 | `npm test` | Vitest unit tests |
@@ -55,19 +62,20 @@ The demo data is also seeded automatically the first time the app reads an empty
 
 ## Tests
 
-- Unit: `npm test` (78 tests across 8 files: rules, validation, stats, library, formatting, cover colors, demo data, maintenance).
+- Unit: `npm test` (141 tests across 15 files: rules, validation, stats, library, formatting, cover colors, demo data, maintenance, plus the reader's upload checks, byte-range parsing, selection handling and progress saving).
 - Type check: `npx tsc --noEmit`.
-- E2E: `npx playwright test` builds the app, uses a separate `e2e-<port>.db`, runs with one worker, and sets `E2E_TEST_HOOKS=1`. The last run passed 37 of 37. Run `npx playwright install chromium` first if the browser is missing.
+- E2E: `npx playwright test` builds the app, uses a separate `e2e-<port>.db`, runs with one worker, and sets `E2E_TEST_HOOKS=1`. The last run passed 85 of 85. Run `npx playwright install chromium` first if the browser is missing.
 
 ## Project structure
 
 ```
 prisma/                 schema, migrations, seed
 prisma.config.ts        Prisma 7 config (datasource URL, seed)
-src/app/                routes: library, books/*, stats, settings, api/test/reset
-src/components/         books/, stats/, settings/, layout/, common/, ui/ (shadcn)
+src/app/                routes: library, books/*, books/[id]/read, stats, settings, api/books/[id]/file, api/test/reset
+src/components/         books/, reader/, stats/, settings/, layout/, common/, ui/ (shadcn)
 src/lib/                validation, book rules, stats, library queries, data access, db client
-tests/e2e/              Playwright specs
+scripts/                copy-pdf-worker.mjs (copies the pdf.js worker into public/)
+tests/e2e/              Playwright specs and PDF/EPUB fixture builders
 docs/pipeline/          spec, architecture, design, reports, screenshots
 ```
 
@@ -75,14 +83,15 @@ Stack: Next.js 16 (App Router), TypeScript, Tailwind CSS v4 with shadcn/ui, Pris
 
 ## Deploying
 
-- **Node host** (VPS, Docker, Railway, Fly): `npm ci && npm run build && npm run start`. Set `DATABASE_URL` to a path on a persistent volume. Do **not** set `E2E_TEST_HOOKS`.
-- **Vercel**: serverless filesystems are ephemeral, so SQLite will not persist there. Switch to Postgres first.
+- **Node host** (VPS, Docker, Railway, Fly): `npm ci && npm run build && npm run start`. Set `DATABASE_URL` and `DATA_DIR` to paths on a persistent volume, and back up the `DATA_DIR` files together with the database. Do **not** set `E2E_TEST_HOOKS`.
+- **Vercel**: serverless filesystems are ephemeral, so SQLite will not persist there. Both the database and the uploaded book files (`DATA_DIR`) would be lost, so they need external storage. Switch to Postgres first, and store files somewhere durable.
 - **SQLite to Postgres**:
   1. In `prisma/schema.prisma`, change the datasource provider to `postgresql`.
   2. Replace `@prisma/adapter-better-sqlite3` with `@prisma/adapter-pg` in `src/lib/db.ts` and `prisma/seed.ts`.
   3. Set `DATABASE_URL` to your Postgres connection string.
   4. Delete `prisma/migrations` and generate a fresh baseline with `npx prisma migrate dev --name init`. Use `prisma migrate deploy` in production.
   5. Check the queries in `src/lib/data/` for case-insensitive search behaviour (SQLite and Postgres differ).
+- Reader notes: EPUB search lists matches but does not highlight them on the page, and PDF search highlighting works per text span. Uploads are limited by `MAX_UPLOAD_MB`.
 - There is no authentication, so put the app behind a private network or an auth proxy if it is exposed.
 
 ## Built with the app pipeline

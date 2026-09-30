@@ -1,4 +1,4 @@
-import type { Book, LibraryParams, SortKey, StatusCounts, StatusFilter } from "@/lib/types";
+import type { Book, LibraryParams, ReadingSummary, SortKey, StatusCounts, StatusFilter } from "@/lib/types";
 
 const STATUS_FILTERS: readonly StatusFilter[] = ["all", "want", "reading", "finished"];
 const SORT_KEYS: readonly SortKey[] = ["recent", "title", "author", "rating"];
@@ -77,4 +77,13 @@ export function buildLibraryHref(current: LibraryParams, patch: Partial<LibraryP
   if (next.sort !== DEFAULT_LIBRARY_PARAMS.sort) search.set("sort", next.sort);
   const query = search.toString();
   return query === "" ? "/" : `/?${query}`;
+}
+
+/** The "Continue reading" row: Reading books with a file that have been opened, most recently read first. */
+export function continueReadingBooks(books: readonly Book[], summaries: Readonly<Record<string, ReadingSummary>>, limit = 3): Book[] {
+  const readAt = (b: Book) => summaries[b.id]?.lastReadAt?.getTime() ?? null;
+  return books
+    .filter((b) => b.status === "reading" && readAt(b) !== null)
+    .sort((a, b) => (readAt(b) ?? 0) - (readAt(a) ?? 0))
+    .slice(0, limit);
 }

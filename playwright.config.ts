@@ -19,6 +19,7 @@ export default defineConfig({
     timeout: 240_000,
     env: {
       DATABASE_URL: process.env.E2E_DATABASE_URL ?? `file:./e2e-${PORT}.db`,
+      DATA_DIR: process.env.E2E_DATA_DIR ?? `./e2e-data-${PORT}`,
       E2E_TEST_HOOKS: "1",
       PORT: String(PORT),
     },

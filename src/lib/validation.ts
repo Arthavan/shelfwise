@@ -74,3 +74,33 @@ export const goalSchema = z.object({
 });
 
 export const resetSchema = z.object({ mode: z.enum(["demo", "empty"]).default("demo") });
+
+export const progressSchema = z.object({
+  id: idSchema,
+  location: z.string().min(1).max(500),
+  percent: z.number().int().min(0).max(100),
+  zoom: z.number().min(0.5).max(3).nullable(),
+  viewMode: z.enum(["page", "scroll"]),
+  pageTheme: z.enum(["light", "sepia", "dark"]),
+});
+
+export const bookmarkSchema = z.object({ id: idSchema, location: z.string().min(1).max(500), label: z.string().trim().max(200).optional() });
+export const bookmarkRemoveSchema = z.object({ id: idSchema, bookmarkId: idSchema });
+
+const highlightRect = z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1), w: z.number().min(0).max(1), h: z.number().min(0).max(1) });
+const highlightColor = z.enum(["yellow", "green", "blue", "pink"]);
+export const highlightAddSchema = z.object({
+  id: idSchema,
+  page: z.number().int().min(1).max(100_000).nullable(),
+  rects: z.array(highlightRect).max(400),
+  cfiRange: z.string().max(1000).nullable().optional(),
+  text: z.string().trim().min(1).max(2000),
+  color: highlightColor,
+});
+export const highlightUpdateSchema = z.object({
+  id: idSchema,
+  highlightId: idSchema,
+  note: z.string().trim().max(2000).nullable().optional(),
+  color: highlightColor.optional(),
+});
+export const highlightRemoveSchema = z.object({ id: idSchema, highlightId: idSchema });

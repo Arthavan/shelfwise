@@ -2,12 +2,15 @@ import type { Metadata } from "next";
 
 import { BookGrid } from "@/components/books/book-grid";
 import { ClearSearchButton } from "@/components/books/clear-search-button";
+import { ContinueReading } from "@/components/books/continue-reading";
 import { LibraryEmpty } from "@/components/books/library-empty";
 import { LibraryToolbar } from "@/components/books/library-toolbar";
 import { PickNextRead } from "@/components/books/pick-next-read";
 import { LIBRARY_PANEL_ID, StatusTabs, statusTabId } from "@/components/books/status-tabs";
 import { listBooks } from "@/lib/data/books";
-import { buildLibraryHref, countByStatus, filterAndSortBooks, parseLibraryParams } from "@/lib/library";
+import { getReadingSummaries } from "@/lib/data/reading";
+import { db } from "@/lib/db";
+import { buildLibraryHref, continueReadingBooks, countByStatus, filterAndSortBooks, parseLibraryParams } from "@/lib/library";
 
 export const dynamic = "force-dynamic";
 
@@ -20,10 +23,18 @@ export default async function LibraryPage({
 }) {
   const params = parseLibraryParams(await searchParams);
   const books = await listBooks();
+  const summaries = await getReadingSummaries(db);
   const counts = countByStatus(books);
   const visible = filterAndSortBooks(books, params);
 
   const candidates = books.filter((b) => b.status === "want").map(({ id, title, author }) => ({ id, title, author }));
+
+  const continueItems = continueReadingBooks(books, summaries).map(({ id, title, author }) => ({
+    id,
+    title,
+    author,
+    percent: summaries[id].percent,
+  }));
 
   let content: React.ReactNode;
   if (counts.all === 0) {
@@ -33,7 +44,7 @@ export default async function LibraryPage({
   } else if (visible.length === 0 && params.status !== "all") {
     content = <LibraryEmpty kind="tab" status={params.status} allHref={buildLibraryHref(params, { status: "all" })} />;
   } else {
-    content = <BookGrid books={visible} />;
+    content = <BookGrid books={visible} readingByBook={summaries} />;
   }
 
   return (
@@ -44,6 +55,7 @@ export default async function LibraryPage({
           <p className="mt-1 text-sm text-muted-foreground">Everything you want to read, are reading and have finished.</p>
         </div>
       </header>
+      {params.q === "" ? <ContinueReading items={continueItems} /> : null}
       <StatusTabs params={params} counts={counts} />
       <div role="tabpanel" id={LIBRARY_PANEL_ID} aria-labelledby={statusTabId(params.status)}>
         <div className="mt-4">

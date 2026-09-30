@@ -9,6 +9,8 @@
  */
 import { expect, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 
+import { makePdf, numberedPages } from "./fixtures/make-pdf";
+
 export type ResetMode = "demo" | "empty";
 
 export async function resetData(request: APIRequestContext, mode: ResetMode): Promise<void> {
@@ -103,4 +105,24 @@ export async function statNumber(page: Page, cardName: string): Promise<number> 
   await expect(value).toBeVisible();
   const text = (await value.textContent()) ?? "";
   return Number(text.replace(/,/g, "").trim());
+}
+
+/** On a book detail page: attach a generated PDF through the file input and wait for confirmation. */
+export async function uploadPdf(page: Page, pages: string[], name = "sample.pdf"): Promise<void> {
+  await page.getByTestId("book-file-input").setInputFiles({ name, mimeType: "application/pdf", buffer: makePdf(pages) });
+  await expect(toast(page, "File attached")).toBeVisible();
+}
+
+/** Piranesi (Want to read in the demo data): attach a numbered-page PDF and open the reader on it. */
+export async function openReader(page: Page, pages: number | string[] = 5, title = "Piranesi"): Promise<void> {
+  await openDetail(page, title);
+  await uploadPdf(page, typeof pages === "number" ? numberedPages(pages) : pages);
+  await page.getByRole("link", { name: "Read", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Page" })).toHaveValue("1");
+  // Navigation works from the stored page count before the PDF loads; wait for the document itself
+  // (startReadingAction only fires after a successful load). A page without text has no spans to wait on.
+  await expect(page.getByText("Opening…")).toHaveCount(0);
+  const hasText = typeof pages === "number" || pages.some((t) => t !== "");
+  if (hasText) await expect(page.locator(".textLayer span").first()).toBeVisible();
+  else await expect(page.locator("[data-page] canvas").first()).toBeVisible();
 }

@@ -3,7 +3,9 @@ import { revalidatePath } from "next/cache";
 
 import { db } from "@/lib/db";
 import { removeAllBooks, replaceWithDemoData } from "@/lib/data/maintenance";
+import { deleteAllBookFiles } from "@/lib/file-storage";
 import { resetSchema } from "@/lib/validation";
+import { isSameOrigin } from "@/lib/request-guard";
 
 export const dynamic = "force-dynamic";
 
@@ -24,18 +26,6 @@ const forbidden = (error: string) => NextResponse.json({ ok: false, error }, { s
 function isJsonRequest(request: Request): boolean {
   const mediaType = request.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase();
   return mediaType === "application/json";
-}
-
-/** Browsers always send Origin on cross-site POSTs; when present it must name this very host. */
-function isSameOrigin(request: Request): boolean {
-  const origin = request.headers.get("origin");
-  if (origin === null) return true;
-  const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? new URL(request.url).host;
-  try {
-    return new URL(origin).host === host;
-  } catch {
-    return false;
-  }
 }
 
 export async function POST(request: Request) {
@@ -60,8 +50,10 @@ export async function POST(request: Request) {
   try {
     if (mode === "demo") {
       await replaceWithDemoData(db, new Date());
+      await deleteAllBookFiles();
     } else {
       await removeAllBooks(db);
+      await deleteAllBookFiles();
       // Keep the AppSettings row (the "initialized" marker) so nothing re-seeds; just clear the goal.
       await db.appSettings.upsert({
         where: { id: "app" },

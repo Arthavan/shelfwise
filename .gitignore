@@ -15,3 +15,7 @@ next-env.d.ts
 /test-results/
 /playwright-report/
 /*.db-*
+
+/public/pdf.worker.min.mjs
+/data/
+/e2e-data-*/

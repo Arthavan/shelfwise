@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { buildDemoBooks } from "./demo-data";
-import { buildLibraryHref, countByStatus, filterAndSortBooks, parseLibraryParams } from "./library";
-import type { Book, LibraryParams } from "./types";
+import { buildLibraryHref, continueReadingBooks, countByStatus, filterAndSortBooks, parseLibraryParams } from "./library";
+import type { Book, LibraryParams, ReadingSummary } from "./types";
 
 const now = new Date(2026, 8, 30, 12);
 
@@ -105,5 +105,28 @@ describe("buildLibraryHref", () => {
   });
   it("encodes q", () => {
     expect(buildLibraryHref(base, { q: "a b&c" })).toBe("/?q=a+b%26c");
+  });
+});
+
+describe("continueReadingBooks", () => {
+  const book = (id: string, status: Book["status"]): Book => ({
+    id, title: id, author: "A", status, pages: null, notes: null, rating: null,
+    startedAt: null, finishedAt: null, createdAt: now, updatedAt: now,
+  });
+  const summary = (lastReadAt: Date | null, hasProgress = false): ReadingSummary => ({ percent: hasProgress ? 40 : 0, location: "1", format: "pdf", lastReadAt, hasProgress });
+  const at = (day: number) => new Date(2026, 8, day);
+
+  it("keeps Reading books with a file that have been opened, most recently read first, at most three", () => {
+    const books = [book("old", "reading"), book("new", "reading"), book("mid", "reading"), book("oldest", "reading"), book("unopened", "reading"), book("nofile", "reading"), book("done", "finished"), book("want", "want")];
+    const summaries: Record<string, ReadingSummary> = {
+      old: summary(at(10), true),
+      new: summary(at(20)), // opened but never paged through: still in the row
+      mid: summary(at(15), true),
+      oldest: summary(at(1), true),
+      unopened: summary(null),
+      done: summary(at(25), true),
+      want: summary(at(26)),
+    };
+    expect(continueReadingBooks(books, summaries).map((b) => b.id)).toEqual(["new", "mid", "old"]);
   });
 });

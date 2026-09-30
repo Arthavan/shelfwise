@@ -5,11 +5,26 @@ import { revalidatePath } from "next/cache";
 import { ERROR_TOAST } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { ensureInitialized, purgeSoftDeleted } from "@/lib/data/maintenance";
+import { deleteBookFiles, sweepOrphanBookDirs } from "@/lib/file-storage";
 import type { ActionResult } from "@/lib/types";
 import { idSchema } from "@/lib/validation";
 
 const NOT_FOUND = "Book not found";
 const UNDO_WINDOW_MS = 10 * 60 * 1000;
+
+/**
+ * Best effort: removes the purged books' files, then sweeps any folder left behind by an earlier
+ * failed cleanup. Never throws, so a disk problem can't block the user's delete.
+ */
+async function cleanUpFiles(purgedIds: string[]): Promise<void> {
+  await Promise.allSettled(purgedIds.map((purgedId) => deleteBookFiles(purgedId)));
+  try {
+    const rows = await db.book.findMany({ select: { id: true } });
+    await sweepOrphanBookDirs(new Set(rows.map((r) => r.id)));
+  } catch {
+    // Retried on the next delete.
+  }
+}
 
 /**
  * D11: soft delete. Deliberately does NOT revalidate: the detail route would re-render into
@@ -22,7 +37,8 @@ export async function deleteBook(input: { id: string }): Promise<ActionResult<{ 
   try {
     await ensureInitialized(db);
     const now = new Date();
-    await purgeSoftDeleted(db, new Date(now.getTime() - UNDO_WINDOW_MS));
+    const purged = await purgeSoftDeleted(db, new Date(now.getTime() - UNDO_WINDOW_MS));
+    await cleanUpFiles(purged);
     const book = await db.book.findFirst({ where: { id, deletedAt: null } });
     if (!book) return { ok: false, error: NOT_FOUND };
     await db.book.update({ where: { id }, data: { deletedAt: now } });

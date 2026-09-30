@@ -73,3 +73,11 @@ export type BookFormValues = {
   notes: string;
   rating: number | null;
 };
+
+export type FileFormat = "pdf" | "epub";
+/** `lastReadAt` is Book.lastReadAt (stamped when the reader opens); `hasProgress` is whether a page position is saved. */
+export type ReadingSummary = { percent: number; location: string; format: FileFormat; lastReadAt: Date | null; hasProgress: boolean };
+export interface BookFileInfo { format: FileFormat; originalName: string; sizeBytes: number; pageCount: number | null }
+export interface ProgressInfo { location: string; percent: number; zoom: number | null; viewMode: "page" | "scroll"; pageTheme: "light" | "sepia" | "dark"; lastReadAt: Date }
+export interface BookmarkInfo { id: string; location: string; label: string | null; createdAt: Date }
+export interface HighlightInfo { id: string; page: number | null; rects: { x: number; y: number; w: number; h: number }[]; cfiRange: string | null; text: string; color: string; note: string | null; createdAt: Date }

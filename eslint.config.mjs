@@ -17,6 +17,7 @@ const eslintConfig = defineConfig([
     ".app-pipeline/**",
     "src/generated/**",
     "build-app/**",
+    "public/pdf.worker.min.mjs",
   ]),
 ]);
 

@@ -16,8 +16,11 @@ import {
 } from "@/components/ui/alert-dialog";
 
 interface ConfirmDialogProps {
-  /** A single element (usually a Button); it opens the dialog. */
-  trigger: ReactNode;
+  /** A single element (usually a Button); it opens the dialog. Omit it to control the dialog with `open`. */
+  trigger?: ReactNode;
+  /** Controlled mode: the caller opens the dialog and hears about closes through `onOpenChange`. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   title: string;
   description: ReactNode;
   confirmLabel: string;
@@ -34,8 +37,15 @@ export function ConfirmDialog({
   confirmLabel,
   destructive = false,
   onConfirm,
+  open: controlledOpen,
+  onOpenChange,
 }: ConfirmDialogProps) {
-  const [open, setOpen] = useState(false);
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const open = controlledOpen ?? uncontrolledOpen;
+  function setOpen(next: boolean) {
+    if (controlledOpen === undefined) setUncontrolledOpen(next);
+    onOpenChange?.(next);
+  }
   const [pending, setPending] = useState(false);
 
   async function handleConfirm() {
@@ -59,7 +69,7 @@ export function ConfirmDialog({
         if (!pending) setOpen(next);
       }}
     >
-      <AlertDialogTrigger asChild>{trigger}</AlertDialogTrigger>
+      {trigger ? <AlertDialogTrigger asChild>{trigger}</AlertDialogTrigger> : null}
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>

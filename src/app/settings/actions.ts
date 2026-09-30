@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { ERROR_TOAST } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { ensureInitialized, removeAllBooks, replaceWithDemoData } from "@/lib/data/maintenance";
+import { deleteAllBookFiles } from "@/lib/file-storage";
 import type { ActionResult } from "@/lib/types";
 
 const DEMO_BOOK_COUNT = 12;
@@ -13,6 +14,7 @@ const DEMO_BOOK_COUNT = 12;
 export async function restoreDemoData(): Promise<ActionResult<{ count: number }>> {
   try {
     await replaceWithDemoData(db, new Date());
+    await deleteAllBookFiles();
     revalidatePath("/", "layout");
     return { ok: true, data: { count: DEMO_BOOK_COUNT } };
   } catch {
@@ -28,6 +30,7 @@ export async function deleteAllBooks(): Promise<ActionResult<{ count: number }>>
     await ensureInitialized(db);
     const before = await db.book.count();
     await removeAllBooks(db);
+    await deleteAllBookFiles();
     revalidatePath("/", "layout");
     return { ok: true, data: { count: before } };
   } catch {
