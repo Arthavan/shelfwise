@@ -342,7 +342,8 @@ export function EpubReader({ data }: { data: ReaderData }) {
   const currentBookmark = bookmarks.find((b) => onPage(b.location));
   const toggleBookmark = useCallback(async () => {
     if (!span) return;
-    await toggleBookmarkAt(currentBookmark, span.start, chapterTitle(sectionHref));
+    // The label is the chapter title; the server caps labels at 200 characters.
+    await toggleBookmarkAt(currentBookmark, span.start, chapterTitle(sectionHref)?.slice(0, 200));
   }, [toggleBookmarkAt, span, currentBookmark, chapterTitle, sectionHref]);
 
   const createHighlight = useCallback(
