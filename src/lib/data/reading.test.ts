@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { PrismaClient } from "../../generated/prisma/client";
 import {
-  addBookmark, addHighlight, attachFile, getFile, getProgress, getReadingSummaries, listBookmarks, listHighlights,
+  addBookmark, addHighlight, attachFile, countAnnotations, getFile, getProgress, getReadingSummaries, listBookmarks, listHighlights,
   removeBookmark, removeFileRow, removeHighlight, saveProgress, startReading, updateHighlight,
 } from "./reading";
 
@@ -78,6 +78,18 @@ describe("reading data layer", () => {
     expect(await getProgress(db, b.id)).toBeNull();
     expect(await listBookmarks(db, b.id)).toEqual([]);
     expect(await listHighlights(db, b.id)).toEqual([]);
+  });
+
+  it("countAnnotations counts only this book's bookmarks and highlights", async () => {
+    const db = newClient();
+    const b = await makeBook(db);
+    const other = await makeBook(db);
+    expect(await countAnnotations(db, b.id)).toEqual({ bookmarks: 0, highlights: 0 });
+    await addBookmark(db, b.id, "1", null);
+    await addBookmark(db, b.id, "2", null);
+    await addHighlight(db, b.id, { page: 1, rects: [{ x: 0, y: 0, w: 0.1, h: 0.1 }], cfiRange: null, text: "hi", color: "yellow" });
+    await addBookmark(db, other.id, "1", null);
+    expect(await countAnnotations(db, b.id)).toEqual({ bookmarks: 2, highlights: 1 });
   });
 
   it("saveProgress upserts and stamps Book.lastReadAt", async () => {

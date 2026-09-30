@@ -95,6 +95,12 @@ export async function startReading(db: PrismaClient, bookId: string, now: Date):
   }
 }
 
+/** How many bookmarks and highlights a book has (what replacing or removing its file would delete). */
+export async function countAnnotations(db: PrismaClient, bookId: string): Promise<{ bookmarks: number; highlights: number }> {
+  const [bookmarks, highlights] = await Promise.all([db.bookmark.count({ where: { bookId } }), db.highlight.count({ where: { bookId } })]);
+  return { bookmarks, highlights };
+}
+
 type BookmarkRow = { id: string; location: string; label: string | null; createdAt: Date };
 const toBookmark = (r: BookmarkRow): BookmarkInfo => ({ id: r.id, location: r.location, label: r.label, createdAt: r.createdAt });
 

@@ -10,13 +10,14 @@ import { Button } from "@/components/ui/button";
 import { loadPdf } from "@/components/reader/pdf-loader";
 import { ERROR_TOAST } from "@/lib/constants";
 import { formatBytes } from "@/lib/format";
-import type { BookFileInfo, ProgressInfo } from "@/lib/types";
+import type { BookFileInfo } from "@/lib/types";
 
 interface UploadFileProps {
   bookId: string;
   file: BookFileInfo | null;
   fileMissing: boolean;
-  progress: ProgressInfo | null;
+  /** The book has a reading position, bookmarks or highlights, which replacing the file deletes. */
+  hasReadingData: boolean;
 }
 
 /** Page count of a PDF, or null when it can't be read (encrypted, damaged): the server decides validity. */
@@ -36,15 +37,25 @@ async function readPageCount(file: File): Promise<number | null> {
   }
 }
 
-export function UploadFile({ bookId, file, fileMissing }: UploadFileProps) {
+export function UploadFile({ bookId, file, fileMissing, hasReadingData }: UploadFileProps) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [pending, setPending] = useState(false);
+  /** A replacement chosen while the book has reading data: held until the user confirms. */
+  const [replacement, setReplacement] = useState<File | null>(null);
 
-  async function handleChange(event: React.ChangeEvent<HTMLInputElement>) {
-    const input = event.currentTarget;
-    const chosen = input.files?.[0];
+  function clearInput() {
+    if (inputRef.current) inputRef.current.value = "";
+  }
+
+  function handleChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const chosen = event.currentTarget.files?.[0];
     if (!chosen) return;
+    if (file && hasReadingData) setReplacement(chosen);
+    else void upload(chosen);
+  }
+
+  async function upload(chosen: File) {
     setPending(true);
     try {
       const pageCount = await readPageCount(chosen);
@@ -62,7 +73,7 @@ export function UploadFile({ bookId, file, fileMissing }: UploadFileProps) {
     } catch {
       toast.error(ERROR_TOAST);
     } finally {
-      input.value = "";
+      clearInput();
       setPending(false);
     }
   }
@@ -99,6 +110,22 @@ export function UploadFile({ bookId, file, fileMissing }: UploadFileProps) {
         data-testid="book-file-input"
         className="hidden"
         onChange={handleChange}
+      />
+      <ConfirmDialog
+        destructive
+        open={replacement !== null}
+        onOpenChange={(open) => {
+          if (open) return;
+          setReplacement(null);
+          clearInput();
+        }}
+        title="Replace this file?"
+        description="Replacing the file removes your reading position, bookmarks and highlights for this book."
+        confirmLabel="Replace file"
+        onConfirm={async () => {
+          if (replacement) await upload(replacement);
+          return true;
+        }}
       />
       <div className="flex flex-wrap gap-2">
         <Button type="button" variant="outline" size="sm" disabled={pending} onClick={() => inputRef.current?.click()}>

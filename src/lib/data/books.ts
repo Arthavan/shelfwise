@@ -4,7 +4,7 @@ import { stat } from "node:fs/promises";
 
 import { db } from "@/lib/db";
 import { ensureInitialized } from "@/lib/data/maintenance";
-import { getFile, getProgress } from "@/lib/data/reading";
+import { countAnnotations, getFile, getProgress } from "@/lib/data/reading";
 import { resolveStoragePath } from "@/lib/file-storage";
 import type { Book, BookFileInfo, BookStatus, ProgressInfo } from "@/lib/types";
 
@@ -44,10 +44,17 @@ export async function getBook(id: string): Promise<Book | null> {
   return row ? toBook(row) : null;
 }
 
-export async function getBookReading(id: string): Promise<{ file: (BookFileInfo & { missing: boolean }) | null; progress: ProgressInfo | null }> {
+export type BookReading = {
+  file: (BookFileInfo & { missing: boolean }) | null;
+  progress: ProgressInfo | null;
+  /** True when replacing or removing the file would delete a reading position, bookmarks or highlights. */
+  hasReadingData: boolean;
+};
+
+export async function getBookReading(id: string): Promise<BookReading> {
   await ensureInitialized(db);
   const file = await getFile(db, id);
-  if (!file) return { file: null, progress: null };
+  if (!file) return { file: null, progress: null, hasReadingData: false };
   let missing = false;
   try {
     await stat(resolveStoragePath(file.storagePath));
@@ -55,5 +62,6 @@ export async function getBookReading(id: string): Promise<{ file: (BookFileInfo 
     missing = true;
   }
   const info: BookFileInfo = { format: file.format, originalName: file.originalName, sizeBytes: file.sizeBytes, pageCount: file.pageCount };
-  return { file: { ...info, missing }, progress: await getProgress(db, id) };
+  const [progress, counts] = await Promise.all([getProgress(db, id), countAnnotations(db, id)]);
+  return { file: { ...info, missing }, progress, hasReadingData: progress !== null || counts.bookmarks > 0 || counts.highlights > 0 };
 }

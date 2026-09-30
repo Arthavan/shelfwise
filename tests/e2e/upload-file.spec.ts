@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { makePdf, numberedPages } from "./fixtures/make-pdf";
-import { openDetail, resetData, toast, uploadPdf } from "./helpers";
+import { openDetail, openReader, resetData, toast, uploadPdf } from "./helpers";
 
 test.beforeEach(async ({ request }) => {
   await resetData(request, "demo");
@@ -44,4 +44,35 @@ test("the file route serves byte ranges", async ({ page, request }) => {
   const bad = await request.get(`/api/books/${id}/file`, { headers: { Range: "bytes=999999999-" } });
   expect(bad.status()).toBe(416);
   expect(makePdf(["x"]).length).toBeGreaterThan(0);
+});
+
+test("replacing a file that has bookmarks asks first: cancel keeps it, confirm replaces it", async ({ page }) => {
+  await openReader(page, 3);
+  await page.getByRole("button", { name: "Add bookmark" }).click();
+  await expect(page.getByRole("button", { name: "Remove bookmark", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("link", { name: "Back to book" }).click();
+  await expect(page.getByText("sample.pdf")).toBeVisible();
+
+  const input = page.getByTestId("book-file-input");
+  const replacement = { name: "other.pdf", mimeType: "application/pdf", buffer: makePdf(["New one", "New two"]) };
+  const dialog = page.getByRole("alertdialog", { name: "Replace this file?" });
+
+  await input.setInputFiles(replacement);
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("bookmarks and highlights");
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByText("sample.pdf")).toBeVisible();
+
+  await input.setInputFiles(replacement);
+  await dialog.getByRole("button", { name: "Replace file" }).click();
+  await expect(toast(page, "File attached")).toBeVisible();
+  await expect(page.getByText("other.pdf")).toBeVisible();
+  await expect(page.getByText("sample.pdf")).toHaveCount(0);
+
+  // The new file starts fresh, so replacing it again needs no confirmation.
+  await input.setInputFiles({ ...replacement, name: "third.pdf" });
+  await expect(page.getByText("third.pdf")).toBeVisible();
+  await expect(dialog).toHaveCount(0);
 });

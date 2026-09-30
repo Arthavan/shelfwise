@@ -26,7 +26,7 @@ export default async function BookDetailPage({ params }: PageProps) {
   const { id } = await params;
   const book = await getBook(id);
   if (!book) notFound();
-  const { file, progress } = await getBookReading(book.id);
+  const { file, progress, hasReadingData } = await getBookReading(book.id);
   const continueLabel = progress
     ? file?.format === "pdf"
       ? `Continue reading (p. ${Number(progress.location)}${file.pageCount ? ` of ${file.pageCount}` : ""} · ${progress.percent}%)`
@@ -68,7 +68,7 @@ export default async function BookDetailPage({ params }: PageProps) {
               </Link>
             </Button>
           ) : null}
-          <UploadFile bookId={book.id} file={file} fileMissing={file?.missing ?? false} progress={progress} />
+          <UploadFile bookId={book.id} file={file} fileMissing={file?.missing ?? false} hasReadingData={hasReadingData} />
         </div>
       </div>
 
