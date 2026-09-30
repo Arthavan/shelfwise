@@ -4,6 +4,7 @@ import { Readable } from "node:stream";
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 
+import { ERROR_TOAST } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { ensureInitialized } from "@/lib/data/maintenance";
 import { attachFile, getFile, removeFileRow } from "@/lib/data/reading";
@@ -17,6 +18,15 @@ export const dynamic = "force-dynamic";
 type Ctx = { params: Promise<{ id: string }> };
 
 const json = (body: object, status: number) => NextResponse.json(body, { status });
+/** Any unexpected failure (disk, database) becomes a JSON error the client can show, never a bare 500. */
+async function orServerError(run: () => Promise<Response>): Promise<Response> {
+  try {
+    return await run();
+  } catch {
+    return json({ ok: false, error: ERROR_TOAST }, 500);
+  }
+}
+
 const MIME = { pdf: "application/pdf", epub: "application/epub+zip" } as const;
 
 export async function GET(request: Request, { params }: Ctx) {
@@ -54,7 +64,11 @@ export async function GET(request: Request, { params }: Ctx) {
   });
 }
 
-export async function POST(request: Request, { params }: Ctx) {
+export async function POST(request: Request, ctx: Ctx) {
+  return orServerError(() => upload(request, ctx));
+}
+
+async function upload(request: Request, { params }: Ctx): Promise<Response> {
   if (!isSameOrigin(request)) return json({ ok: false, error: "Cross-origin requests are not allowed" }, 403);
   const id = idSchema.safeParse((await params).id);
   if (!id.success) return json({ ok: false, error: "Book not found" }, 404);
@@ -89,7 +103,11 @@ export async function POST(request: Request, { params }: Ctx) {
   return json({ ok: true, format, sizeBytes: data.length }, 200);
 }
 
-export async function DELETE(request: Request, { params }: Ctx) {
+export async function DELETE(request: Request, ctx: Ctx) {
+  return orServerError(() => remove(request, ctx));
+}
+
+async function remove(request: Request, { params }: Ctx): Promise<Response> {
   if (!isSameOrigin(request)) return json({ ok: false, error: "Cross-origin requests are not allowed" }, 403);
   const id = idSchema.safeParse((await params).id);
   if (!id.success) return json({ ok: false, error: "Book not found" }, 404);
