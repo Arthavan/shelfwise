@@ -1,7 +1,8 @@
 "use client";
-import { useCallback, useEffect, useRef } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
+import { createProgressSaver } from "@/components/reader/progress-saver-core";
 import { ERROR_TOAST } from "@/lib/constants";
 
 export type ProgressPayload = {
@@ -14,60 +15,21 @@ export type ProgressPayload = {
 
 /** Debounces progress saves; flushes on tab hide, page hide and unmount. */
 export function useProgressSaver(save: (p: ProgressPayload) => Promise<unknown>, delayMs = 1000) {
-  const pending = useRef<ProgressPayload | null>(null);
-  const failing = useRef(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const saveRef = useRef(save);
+  const [core] = useState(() => createProgressSaver(save, () => toast.error(ERROR_TOAST), delayMs));
   useEffect(() => {
-    saveRef.current = save;
-  });
-
-  const flush = useCallback(() => {
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = null;
-    const p = pending.current;
-    pending.current = null;
-    if (!p) return;
-    void (async () => {
-      let ok = true;
-      try {
-        const res = (await saveRef.current(p)) as { ok?: boolean } | undefined;
-        if (res && res.ok === false) ok = false;
-      } catch {
-        ok = false;
-      }
-      if (ok) {
-        failing.current = false;
-        return;
-      }
-      // Keep the payload for the next schedule/flush (a newer one wins); tell the reader once per failure streak.
-      if (!pending.current) pending.current = p;
-      if (!failing.current) {
-        failing.current = true;
-        toast.error(ERROR_TOAST);
-      }
-    })();
-  }, []);
-
-  const schedule = useCallback(
-    (p: ProgressPayload) => {
-      pending.current = p;
-      if (timer.current) clearTimeout(timer.current);
-      timer.current = setTimeout(flush, delayMs);
-    },
-    [delayMs, flush],
-  );
+    core.setSave(save);
+  }, [core, save]);
 
   useEffect(() => {
-    const onHide = () => flush();
+    const onHide = () => core.flush();
     window.addEventListener("pagehide", onHide);
     document.addEventListener("visibilitychange", onHide);
     return () => {
       window.removeEventListener("pagehide", onHide);
       document.removeEventListener("visibilitychange", onHide);
-      flush();
+      core.flush();
     };
-  }, [flush]);
+  }, [core]);
 
-  return { schedule, flush };
+  return core;
 }

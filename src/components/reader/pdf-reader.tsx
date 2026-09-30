@@ -94,6 +94,7 @@ export function PdfReader({ data }: { data: ReaderData }) {
   /** Page to scroll to in scroll mode (set by user navigation, mode switch and zoom; not by scrolling). */
   const pendingScroll = useRef<number | null>(initial.page); // resuming in scroll mode scrolls to the saved page
   const started = useRef(false);
+  const settleUntil = useRef(0);
   // Seeded from the raw stored location (not the clamped page) so a stored page past the end is corrected on save.
   const lastSavedKey = useRef(JSON.stringify([Number(progress?.location ?? 1), initial.zoom, initial.viewMode, initial.pageTheme]));
 
@@ -185,6 +186,7 @@ export function PdfReader({ data }: { data: ReaderData }) {
     const target = pendingScroll.current;
     if (target === null) return;
     pendingScroll.current = null;
+    settleUntil.current = Date.now() + 500; // the scroll events this causes must not re-pick the page
     el.querySelector(`[data-page-slot="${target}"]`)?.scrollIntoView({ block: "start" });
   }, [page, viewMode, zoom, pdf]);
 
@@ -195,6 +197,8 @@ export function PdfReader({ data }: { data: ReaderData }) {
     const visiblePx = new Map<number, number>();
     const lastPage = pdf.numPages;
     function recompute() {
+      // A programmatic jump (bookmark, contents, End) already chose the page; a short final viewport must not override it.
+      if (Date.now() < settleUntil.current) return;
       // Scrolled to the very end: the last page is current even if a taller page above shows more pixels.
       const scrollable = root!.scrollHeight > root!.clientHeight + 1;
       if (scrollable && root!.scrollTop + root!.clientHeight >= root!.scrollHeight - 1) {

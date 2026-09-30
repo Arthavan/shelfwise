@@ -159,3 +159,23 @@ test("Contents tab says so when the PDF has no outline", async ({ page }) => {
     page.getByText("This PDF has no table of contents"),
   ).toBeVisible();
 });
+
+test("scroll mode at low zoom: jumping to a page that cannot reach the top keeps that page current", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 1500 }); // tall viewport: page 4 cannot reach the top
+  await openReader(page);
+  for (let i = 0; i < 3; i++) await page.getByRole("button", { name: "Zoom out" }).click();
+  await expect(page.getByText("50%")).toBeVisible();
+  await pageInput(page).fill("4");
+  await pageInput(page).press("Enter");
+  await expect(pageInput(page)).toHaveValue("4");
+  await page.keyboard.press("b");
+  await expect(page.getByRole("button", { name: "Remove bookmark", exact: true })).toBeVisible();
+  await page.getByRole("combobox", { name: "View mode" }).selectOption("scroll");
+  await page.keyboard.press("Home");
+  await expect(pageInput(page)).toHaveValue("1");
+  await openPanel(page, "Bookmarks");
+  await page.getByRole("complementary").getByRole("button", { name: "Page 4", exact: true }).click();
+  await page.waitForTimeout(1000); // let the scroll events settle
+  await expect(pageInput(page)).toHaveValue("4");
+  await expect(page.getByRole("button", { name: "Mark as finished" })).toHaveCount(0);
+});
