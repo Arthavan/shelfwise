@@ -2,7 +2,7 @@
 import type { PrismaClient } from "../../generated/prisma/client";
 import { applyStatusChange } from "../book-rules";
 import type { Rect } from "../reading";
-import type { BookFileInfo, BookmarkInfo, BookStatus, FileFormat, HighlightInfo, ProgressInfo } from "../types";
+import type { BookFileInfo, BookmarkInfo, BookStatus, FileFormat, HighlightInfo, ProgressInfo, ReadingSummary } from "../types";
 
 function isFileFormat(s: string): s is FileFormat {
   return s === "pdf" || s === "epub";
@@ -176,15 +176,15 @@ export async function removeHighlight(db: PrismaClient, bookId: string, id: stri
 export async function getReadingSummaries(
   db: PrismaClient,
   bookIds?: string[],
-): Promise<Record<string, { percent: number; location: string; format: FileFormat }>> {
+): Promise<Record<string, ReadingSummary>> {
   const rows = await db.bookFile.findMany({
     where: { book: { deletedAt: null }, ...(bookIds ? { bookId: { in: bookIds } } : {}) },
     include: { book: { include: { progress: true } } },
   });
-  const out: Record<string, { percent: number; location: string; format: FileFormat }> = {};
+  const out: Record<string, ReadingSummary> = {};
   for (const r of rows) {
     if (!isFileFormat(r.format)) continue;
-    out[r.bookId] = { percent: r.book.progress?.percent ?? 0, location: r.book.progress?.location ?? "1", format: r.format };
+    out[r.bookId] = { percent: r.book.progress?.percent ?? 0, location: r.book.progress?.location ?? "1", format: r.format, lastReadAt: r.book.progress?.lastReadAt ?? null };
   }
   return out;
 }

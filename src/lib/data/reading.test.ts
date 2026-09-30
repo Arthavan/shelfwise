@@ -162,7 +162,15 @@ describe("reading data layer", () => {
     await attachFile(db, a.id, file);
     await saveProgress(db, a.id, { location: "50", percent: 25, viewMode: "page", pageTheme: "light" }, new Date());
     const s = await getReadingSummaries(db);
-    expect(s[a.id]).toEqual({ percent: 25, location: "50", format: "pdf" });
+    expect(s[a.id]).toEqual({ percent: 25, location: "50", format: "pdf", lastReadAt: expect.any(Date) });
     expect(s[b.id]).toBeUndefined();
+  });
+
+  it("getReadingSummaries reports lastReadAt null for a file without progress", async () => {
+    const db = newClient();
+    const a = await makeBook(db);
+    await attachFile(db, a.id, file);
+    const s = await getReadingSummaries(db);
+    expect(s[a.id]).toEqual({ percent: 0, location: "1", format: "pdf", lastReadAt: null });
   });
 });

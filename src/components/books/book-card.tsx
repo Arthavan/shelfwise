@@ -1,12 +1,14 @@
 import Link from "next/link";
 
 import { BookCover } from "@/components/books/book-cover";
+import { ReadingProgress } from "@/components/books/reading-progress";
 import { RatingControl } from "@/components/books/rating-control";
 import { StatusSelect } from "@/components/books/status-select";
-import type { Book } from "@/lib/types";
+import { Button } from "@/components/ui/button";
+import type { Book, ReadingSummary } from "@/lib/types";
 
 /** One book on the shelf. Only the title is a link: the card itself holds controls (DESIGN §5.7). */
-export function BookCard({ book }: { book: Book }) {
+export function BookCard({ book, reading }: { book: Book; reading?: ReadingSummary }) {
   const titleId = `book-${book.id}-title`;
   return (
     <article
@@ -25,6 +27,14 @@ export function BookCard({ book }: { book: Book }) {
         </h2>
         <p className="mt-1 truncate text-sm text-muted-foreground">{book.author}</p>
         <div className="mt-auto space-y-3 pt-4">
+          {reading ? (
+            <div className="space-y-2">
+              {reading.lastReadAt ? <ReadingProgress percent={reading.percent} /> : null}
+              <Button asChild size="sm" variant="outline">
+                <Link href={`/books/${book.id}/read`}>{reading.lastReadAt ? "Continue" : "Read"}</Link>
+              </Button>
+            </div>
+          ) : null}
           <StatusSelect bookId={book.id} title={book.title} status={book.status} />
           {book.status === "finished" ? <RatingControl bookId={book.id} rating={book.rating} size="sm" /> : null}
         </div>

@@ -75,6 +75,7 @@ export type BookFormValues = {
 };
 
 export type FileFormat = "pdf" | "epub";
+export type ReadingSummary = { percent: number; location: string; format: FileFormat; lastReadAt: Date | null };
 export interface BookFileInfo { format: FileFormat; originalName: string; sizeBytes: number; pageCount: number | null }
 export interface ProgressInfo { location: string; percent: number; zoom: number | null; viewMode: "page" | "scroll"; pageTheme: "light" | "sepia" | "dark"; lastReadAt: Date }
 export interface BookmarkInfo { id: string; location: string; label: string | null; createdAt: Date }
