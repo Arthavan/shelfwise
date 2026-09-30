@@ -5,6 +5,7 @@ import { ArrowLeft, Pencil } from "lucide-react";
 
 import { BookCover } from "@/components/books/book-cover";
 import { BookDetails } from "@/components/books/book-details";
+import { DeleteBookButton } from "@/components/books/delete-book-button";
 import { RatingControl } from "@/components/books/rating-control";
 import { StatusSelect } from "@/components/books/status-select";
 import { Button } from "@/components/ui/button";
@@ -50,6 +51,7 @@ export default async function BookDetailPage({ params }: PageProps) {
                 Edit
               </Link>
             </Button>
+            <DeleteBookButton bookId={book.id} title={book.title} />
           </div>
         </div>
       </div>
