@@ -1,15 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Pencil } from "lucide-react";
+import { ArrowLeft, BookOpen, Pencil } from "lucide-react";
 
 import { BookCover } from "@/components/books/book-cover";
 import { BookDetails } from "@/components/books/book-details";
 import { DeleteBookButton } from "@/components/books/delete-book-button";
 import { RatingControl } from "@/components/books/rating-control";
 import { StatusSelect } from "@/components/books/status-select";
+import { UploadFile } from "@/components/books/upload-file";
 import { Button } from "@/components/ui/button";
-import { getBook } from "@/lib/data/books";
+import { getBook, getBookReading } from "@/lib/data/books";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +26,12 @@ export default async function BookDetailPage({ params }: PageProps) {
   const { id } = await params;
   const book = await getBook(id);
   if (!book) notFound();
+  const { file, progress } = await getBookReading(book.id);
+  const continueLabel = progress
+    ? file?.format === "pdf"
+      ? `Continue reading (p. ${Number(progress.location)}${file.pageCount ? ` of ${file.pageCount}` : ""} · ${progress.percent}%)`
+      : `Continue reading (${progress.percent}%)`
+    : "Read";
 
   return (
     <div>
@@ -53,6 +60,15 @@ export default async function BookDetailPage({ params }: PageProps) {
             </Button>
             <DeleteBookButton bookId={book.id} title={book.title} />
           </div>
+          {file && !file.missing ? (
+            <Button asChild size="sm" className="w-full sm:w-auto">
+              <Link href={`/books/${book.id}/read`}>
+                <BookOpen aria-hidden="true" />
+                {continueLabel}
+              </Link>
+            </Button>
+          ) : null}
+          <UploadFile bookId={book.id} file={file} fileMissing={file?.missing ?? false} progress={progress} />
         </div>
       </div>
 

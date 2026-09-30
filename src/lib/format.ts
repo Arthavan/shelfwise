@@ -39,3 +39,11 @@ export function ratedLabel(n: number): string {
 export function monthBarLabel(b: Pick<MonthBucket, "label" | "count">): string {
   return `${b.label}: ${pluralize(b.count, "book")}`;
 }
+
+/** "0 B", "1.5 KB", "5.0 MB" */
+export function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(n / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}

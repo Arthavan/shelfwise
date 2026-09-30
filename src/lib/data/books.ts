@@ -1,8 +1,12 @@
 import "server-only";
 
+import { stat } from "node:fs/promises";
+
 import { db } from "@/lib/db";
 import { ensureInitialized } from "@/lib/data/maintenance";
-import type { Book, BookStatus } from "@/lib/types";
+import { getFile, getProgress } from "@/lib/data/reading";
+import { resolveStoragePath } from "@/lib/file-storage";
+import type { Book, BookFileInfo, BookStatus, ProgressInfo } from "@/lib/types";
 
 type BookRow = Omit<Book, "status"> & { status: string };
 
@@ -38,4 +42,18 @@ export async function getBook(id: string): Promise<Book | null> {
   await ensureInitialized(db);
   const row = await db.book.findFirst({ where: { id, deletedAt: null } });
   return row ? toBook(row) : null;
+}
+
+export async function getBookReading(id: string): Promise<{ file: (BookFileInfo & { missing: boolean }) | null; progress: ProgressInfo | null }> {
+  await ensureInitialized(db);
+  const file = await getFile(db, id);
+  if (!file) return { file: null, progress: null };
+  let missing = false;
+  try {
+    await stat(resolveStoragePath(file.storagePath));
+  } catch {
+    missing = true;
+  }
+  const info: BookFileInfo = { format: file.format, originalName: file.originalName, sizeBytes: file.sizeBytes, pageCount: file.pageCount };
+  return { file: { ...info, missing }, progress: await getProgress(db, id) };
 }

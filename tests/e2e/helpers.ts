@@ -9,6 +9,8 @@
  */
 import { expect, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 
+import { makePdf } from "./fixtures/make-pdf";
+
 export type ResetMode = "demo" | "empty";
 
 export async function resetData(request: APIRequestContext, mode: ResetMode): Promise<void> {
@@ -103,4 +105,10 @@ export async function statNumber(page: Page, cardName: string): Promise<number> 
   await expect(value).toBeVisible();
   const text = (await value.textContent()) ?? "";
   return Number(text.replace(/,/g, "").trim());
+}
+
+/** On a book detail page: attach a generated PDF through the file input and wait for confirmation. */
+export async function uploadPdf(page: Page, pages: string[], name = "sample.pdf"): Promise<void> {
+  await page.getByTestId("book-file-input").setInputFiles({ name, mimeType: "application/pdf", buffer: makePdf(pages) });
+  await expect(toast(page, "File attached")).toBeVisible();
 }

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   formatAverage,
+  formatBytes,
   formatDate,
   formatNumber,
   monthBarLabel,
@@ -49,5 +50,13 @@ describe("pluralize and labels", () => {
     expect(monthBarLabel({ label: "Sep 2026", count: 1 })).toBe("Sep 2026: 1 book");
     expect(monthBarLabel({ label: "Aug 2026", count: 0 })).toBe("Aug 2026: 0 books");
     expect(monthBarLabel({ label: "Jul 2026", count: 3 })).toMatch(/^[A-Z][a-z]{2} \d{4}: \d+ books?$/);
+  });
+});
+
+describe("formatBytes", () => {
+  it("formats byte sizes", () => {
+    expect(formatBytes(0)).toBe("0 B");
+    expect(formatBytes(1536)).toBe("1.5 KB");
+    expect(formatBytes(5 * 1024 * 1024)).toBe("5.0 MB");
   });
 });
