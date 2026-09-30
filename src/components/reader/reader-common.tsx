@@ -1,15 +1,16 @@
 "use client";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, CircleCheck } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 
 export const OPEN_ERROR = "Shelfwise couldn't open this file. It may be damaged or password-protected.";
 
-/** Hotkeys are ignored while the user types in a field. */
+/** Hotkeys are ignored while the user types in a field. Duck-typed: EPUB key events come from the book's iframe (another realm). */
 export function isTypingTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
+  const el = target as Partial<HTMLElement> | null;
+  if (!el || typeof el.tagName !== "string") return false;
+  return el.isContentEditable === true || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName);
 }
 
 export function toggleFullscreen() {
@@ -31,6 +32,19 @@ export function ReaderOpenError({ backHref }: { backHref: string }) {
           </Link>
         </Button>
       </div>
+    </div>
+  );
+}
+
+/** Bottom bar offering the explicit "Mark as finished" (never applied silently). */
+export function FinishBanner({ message, onFinish }: { message: string; onFinish: () => void }) {
+  return (
+    <div className="flex items-center justify-center gap-3 border-t bg-background px-4 py-3">
+      <p className="text-sm text-muted-foreground">{message}</p>
+      <Button size="sm" onClick={onFinish}>
+        <CircleCheck aria-hidden="true" />
+        Mark as finished
+      </Button>
     </div>
   );
 }

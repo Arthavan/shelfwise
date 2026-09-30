@@ -1,32 +1,21 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CircleCheck } from "lucide-react";
 import type { Book, Contents, Location, NavItem, Rendition } from "epubjs";
 import type Section from "epubjs/types/section";
 import { toast } from "sonner";
 
-import {
-  addBookmarkAction,
-  addHighlightAction,
-  removeBookmarkAction,
-  removeHighlightAction,
-  saveProgressAction,
-  startReadingAction,
-  updateHighlightAction,
-} from "@/app/books/[id]/read/actions";
-import { updateBookStatus } from "@/app/books/status-actions";
+import { saveProgressAction, startReadingAction } from "@/app/books/[id]/read/actions";
 import { HIGHLIGHT_BG } from "@/components/reader/pdf-page";
-import { isTypingTarget, ReaderOpenError, toggleFullscreen } from "@/components/reader/reader-common";
+import { FinishBanner, isTypingTarget, ReaderOpenError, toggleFullscreen } from "@/components/reader/reader-common";
 import { ReaderToolbar } from "@/components/reader/reader-toolbar";
-import { SEARCH_INPUT_ID, SearchPanel } from "@/components/reader/search-panel";
+import { focusSearchInput, SearchPanel } from "@/components/reader/search-panel";
 import { SelectionPopover } from "@/components/reader/selection-popover";
 import { SidePanel, type PanelTab, type TocItem } from "@/components/reader/side-panel";
 import type { ReaderData } from "@/components/reader/types";
 import { useProgressSaver, type ProgressPayload } from "@/components/reader/use-progress-saver";
-import { Button } from "@/components/ui/button";
-import { ERROR_TOAST, STATUS_TOASTS } from "@/lib/constants";
+import { useFinishBook, useReaderAnnotations } from "@/components/reader/use-reader-annotations";
+import { ERROR_TOAST } from "@/lib/constants";
 import { clampZoom, wrapIndex, type HighlightColor, type PageTheme, type SearchHit, type ViewMode } from "@/lib/reading";
-import type { BookmarkInfo, BookStatus, HighlightInfo } from "@/lib/types";
 
 const DEFAULT_TEXT_SIZE = 1;
 const LOCATION_CHARS = 1600;
@@ -84,10 +73,10 @@ export function EpubReader({ data }: { data: ReaderData }) {
   const [zoom, setZoom] = useState(initial.zoom);
   const [viewMode, setViewMode] = useState<ViewMode>(initial.viewMode);
   const [pageTheme, setPageTheme] = useState<PageTheme>(initial.pageTheme);
-  const [status, setStatus] = useState<BookStatus>(data.status);
+  const { status, markFinished } = useFinishBook(bookId, data.status);
   const [toc, setToc] = useState<TocItem[]>([]);
-  const [bookmarks, setBookmarks] = useState<BookmarkInfo[]>(data.bookmarks);
-  const [highlights, setHighlights] = useState<HighlightInfo[]>(data.highlights);
+  const { bookmarks, highlights, toggleBookmark: toggleBookmarkAt, removeBookmark, addHighlight, updateHighlight, removeHighlight } =
+    useReaderAnnotations(bookId, data);
   const [panelOpen, setPanelOpen] = useState(false);
   const [panelTab, setPanelTab] = useState<PanelTab>("contents");
   const [pending, setPending] = useState<{ cfiRange: string; text: string; anchor: { x: number; y: number }; contents: Contents } | null>(null);
@@ -341,7 +330,7 @@ export function EpubReader({ data }: { data: ReaderData }) {
   }, []);
   const openSearch = useCallback(() => {
     setSearchOpen(true);
-    requestAnimationFrame(() => document.getElementById(SEARCH_INPUT_ID)?.focus());
+    focusSearchInput();
   }, []);
   const toggleSearch = useCallback(() => {
     if (searchOpen) closeSearch();
@@ -353,83 +342,19 @@ export function EpubReader({ data }: { data: ReaderData }) {
   const currentBookmark = bookmarks.find((b) => onPage(b.location));
   const toggleBookmark = useCallback(async () => {
     if (!span) return;
-    if (currentBookmark) {
-      const removed = currentBookmark;
-      setBookmarks((prev) => prev.filter((b) => b.id !== removed.id));
-      const res = await removeBookmarkAction({ id: bookId, bookmarkId: removed.id });
-      if (!res.ok) {
-        setBookmarks((prev) => (prev.some((b) => b.id === removed.id) ? prev : [...prev, removed]));
-        toast.error(ERROR_TOAST);
-      }
-      return;
-    }
-    const res = await addBookmarkAction({ id: bookId, location: span.start, label: chapterTitle(sectionHref) });
-    if (res.ok) setBookmarks((prev) => (prev.some((b) => b.id === res.data.id) ? prev : [...prev, res.data]));
-    else toast.error(ERROR_TOAST);
-  }, [bookId, span, currentBookmark, chapterTitle, sectionHref]);
-
-  const removeBookmark = useCallback(
-    async (bookmarkId: string) => {
-      const removed = bookmarks.find((b) => b.id === bookmarkId);
-      setBookmarks((prev) => prev.filter((b) => b.id !== bookmarkId));
-      const res = await removeBookmarkAction({ id: bookId, bookmarkId });
-      if (!res.ok) {
-        if (removed) setBookmarks((prev) => [...prev, removed]);
-        toast.error(ERROR_TOAST);
-      }
-    },
-    [bookId, bookmarks],
-  );
+    await toggleBookmarkAt(currentBookmark, span.start, chapterTitle(sectionHref));
+  }, [toggleBookmarkAt, span, currentBookmark, chapterTitle, sectionHref]);
 
   const createHighlight = useCallback(
     async (color: HighlightColor, note: string) => {
       if (!pending) return;
       const p = pending;
       setPending(null);
-      const res = await addHighlightAction({ id: bookId, page: null, rects: [], cfiRange: p.cfiRange, text: p.text, color });
-      if (!res.ok) {
-        toast.error(ERROR_TOAST);
-        return;
-      }
-      p.contents.window?.getSelection()?.removeAllRanges();
-      const trimmed = note.trim();
-      setHighlights((prev) => [...prev, { ...res.data, note: trimmed || null }]);
-      if (trimmed) {
-        const upd = await updateHighlightAction({ id: bookId, highlightId: res.data.id, note: trimmed });
-        if (!upd.ok) {
-          setHighlights((prev) => prev.map((h) => (h.id === res.data.id ? { ...h, note: null } : h)));
-          toast.error(ERROR_TOAST);
-        }
-      }
+      await addHighlight({ page: null, rects: [], cfiRange: p.cfiRange, text: p.text }, color, note, () =>
+        p.contents.window?.getSelection()?.removeAllRanges(),
+      );
     },
-    [bookId, pending],
-  );
-
-  const updateHighlight = useCallback(
-    async (highlightId: string, patch: { note?: string | null; color?: string }) => {
-      const before = highlights.find((h) => h.id === highlightId);
-      if (!before) return;
-      setHighlights((prev) => prev.map((h) => (h.id === highlightId ? { ...h, ...patch } : h)));
-      const res = await updateHighlightAction({ id: bookId, highlightId, ...patch });
-      if (!res.ok) {
-        setHighlights((prev) => prev.map((h) => (h.id === highlightId ? before : h)));
-        toast.error(ERROR_TOAST);
-      }
-    },
-    [bookId, highlights],
-  );
-
-  const removeHighlight = useCallback(
-    async (highlightId: string) => {
-      const removed = highlights.find((h) => h.id === highlightId);
-      setHighlights((prev) => prev.filter((h) => h.id !== highlightId));
-      const res = await removeHighlightAction({ id: bookId, highlightId });
-      if (!res.ok) {
-        if (removed) setHighlights((prev) => [...prev, removed]);
-        toast.error(ERROR_TOAST);
-      }
-    },
-    [bookId, highlights],
+    [pending, addHighlight],
   );
 
   const onKey = useCallback(
@@ -490,16 +415,6 @@ export function EpubReader({ data }: { data: ReaderData }) {
   const changeZoom = useCallback((z: number) => setZoom(clampZoom(z)), []);
   const togglePanel = useCallback(() => setPanelOpen((o) => !o), []);
   const closePopover = useCallback(() => setPending(null), []);
-
-  async function markFinished() {
-    const res = await updateBookStatus({ id: bookId, status: "finished" });
-    if (res.ok) {
-      setStatus("finished");
-      toast.success(STATUS_TOASTS.finished);
-    } else {
-      toast.error(res.error);
-    }
-  }
 
   const byCfi = useCallback(<T,>(items: T[], cfiOf: (t: T) => string | null) => {
     return [...items].sort((a, b) => {
@@ -593,15 +508,7 @@ export function EpubReader({ data }: { data: ReaderData }) {
           onClose={closePopover}
         />
       ) : null}
-      {showFinish ? (
-        <div className="flex items-center justify-center gap-3 border-t bg-background px-4 py-3">
-          <p className="text-sm text-muted-foreground">You&apos;ve reached the end of the book.</p>
-          <Button size="sm" onClick={() => void markFinished()}>
-            <CircleCheck aria-hidden="true" />
-            Mark as finished
-          </Button>
-        </div>
-      ) : null}
+      {showFinish ? <FinishBanner message={"You've reached the end of the book."} onFinish={() => void markFinished()} /> : null}
     </>
   );
 }

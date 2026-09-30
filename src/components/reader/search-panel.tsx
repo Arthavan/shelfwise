@@ -25,6 +25,11 @@ const pageLabel = (h: SearchHit) => `Page ${h.page}`;
 
 export const SEARCH_INPUT_ID = "reader-search-input";
 
+/** Focus the search box once the panel has rendered (used when opening search). */
+export function focusSearchInput() {
+  requestAnimationFrame(() => document.getElementById(SEARCH_INPUT_ID)?.focus());
+}
+
 export function SearchPanel({ query, onQuery, hits, current, onPrev, onNext, onPick, onClose, loading, noText, pending, hitLabel = pageLabel }: SearchPanelProps) {
   const hasQuery = query.trim() !== "";
   let summary = "";

@@ -1,36 +1,25 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CircleCheck } from "lucide-react";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import { toast } from "sonner";
 
-import {
-  addBookmarkAction,
-  addHighlightAction,
-  removeBookmarkAction,
-  removeHighlightAction,
-  saveProgressAction,
-  startReadingAction,
-  updateHighlightAction,
-} from "@/app/books/[id]/read/actions";
-import { updateBookStatus } from "@/app/books/status-actions";
+import { saveProgressAction, startReadingAction } from "@/app/books/[id]/read/actions";
 import { pdfOutlineToItems, type OutlineItem } from "@/components/reader/outline";
 import { getAllPageTexts } from "@/components/reader/page-text";
 import { PdfPage } from "@/components/reader/pdf-page";
-import { isTypingTarget, ReaderOpenError, toggleFullscreen } from "@/components/reader/reader-common";
+import { FinishBanner, isTypingTarget, ReaderOpenError, toggleFullscreen } from "@/components/reader/reader-common";
 import { loadPdf } from "@/components/reader/pdf-loader";
 import { ReaderToolbar } from "@/components/reader/reader-toolbar";
-import { SEARCH_INPUT_ID, SearchPanel } from "@/components/reader/search-panel";
+import { focusSearchInput, SearchPanel } from "@/components/reader/search-panel";
 import { selectionToHighlight } from "@/components/reader/selection";
 import { SelectionPopover } from "@/components/reader/selection-popover";
 import { SidePanel, type PanelTab } from "@/components/reader/side-panel";
 import type { ReaderData } from "@/components/reader/types";
 import { useProgressSaver, type ProgressPayload } from "@/components/reader/use-progress-saver";
-import { Button } from "@/components/ui/button";
-import { ERROR_TOAST, STATUS_TOASTS } from "@/lib/constants";
+import { useFinishBook, useReaderAnnotations } from "@/components/reader/use-reader-annotations";
+import { ERROR_TOAST } from "@/lib/constants";
 import { clampPage, clampZoom, percentFor, searchPages, wrapIndex, type HighlightColor, type PageTheme, type Rect, type ViewMode } from "@/lib/reading";
 import type { SearchHit } from "@/lib/reading";
-import type { BookmarkInfo, BookStatus, HighlightInfo } from "@/lib/types";
 
 const DEFAULT_ZOOM = 1.25;
 
@@ -87,13 +76,13 @@ export function PdfReader({ data }: { data: ReaderData }) {
   const [zoom, setZoom] = useState(initial.zoom);
   const [viewMode, setViewMode] = useState<ViewMode>(initial.viewMode);
   const [pageTheme, setPageTheme] = useState<PageTheme>(initial.pageTheme);
-  const [status, setStatus] = useState<BookStatus>(data.status);
+  const { status, markFinished } = useFinishBook(bookId, data.status);
   const [baseSize, setBaseSize] = useState<{ w: number; h: number } | null>(null);
-  const [bookmarks, setBookmarks] = useState<BookmarkInfo[]>(data.bookmarks);
+  const { bookmarks, highlights, toggleBookmark: toggleBookmarkAt, removeBookmark, addHighlight, updateHighlight, removeHighlight } =
+    useReaderAnnotations(bookId, data);
   const [panelOpen, setPanelOpen] = useState(false);
   const [panelTab, setPanelTab] = useState<PanelTab>("contents");
   const [outline, setOutline] = useState<OutlineItem[]>([]);
-  const [highlights, setHighlights] = useState<HighlightInfo[]>(data.highlights);
   const [pending, setPending] = useState<{ page: number; rects: Rect[]; text: string; anchor: { x: number; y: number } } | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -244,7 +233,7 @@ export function PdfReader({ data }: { data: ReaderData }) {
 
   const openSearch = useCallback(() => {
     setSearchOpen(true);
-    requestAnimationFrame(() => document.getElementById(SEARCH_INPUT_ID)?.focus());
+    focusSearchInput();
   }, []);
 
   // Page mode: back to the top of the page on navigation. Scroll mode: bring the requested page into view.
@@ -366,37 +355,10 @@ export function PdfReader({ data }: { data: ReaderData }) {
   }, [searchOpen, openSearch, closeSearch]);
 
   const currentBookmark = bookmarks.find((b) => b.location === String(page));
-  const toggleBookmark = useCallback(async () => {
-    if (currentBookmark) {
-      const removed = currentBookmark;
-      setBookmarks((prev) => prev.filter((b) => b.id !== removed.id));
-      const res = await removeBookmarkAction({ id: bookId, bookmarkId: removed.id });
-      if (!res.ok) {
-        setBookmarks((prev) => (prev.some((b) => b.id === removed.id) ? prev : [...prev, removed]));
-        toast.error(ERROR_TOAST);
-      }
-      return;
-    }
-    const res = await addBookmarkAction({ id: bookId, location: String(page) });
-    if (res.ok) setBookmarks((prev) => (prev.some((b) => b.id === res.data.id) ? prev : [...prev, res.data]));
-    else toast.error(ERROR_TOAST);
-  }, [bookId, page, currentBookmark]);
+  const toggleBookmark = useCallback(() => toggleBookmarkAt(currentBookmark, String(page)), [toggleBookmarkAt, currentBookmark, page]);
   useEffect(() => {
     toggleBookmarkRef.current = toggleBookmark;
   });
-
-  const removeBookmark = useCallback(
-    async (bookmarkId: string) => {
-      const removed = bookmarks.find((b) => b.id === bookmarkId);
-      setBookmarks((prev) => prev.filter((b) => b.id !== bookmarkId));
-      const res = await removeBookmarkAction({ id: bookId, bookmarkId });
-      if (!res.ok) {
-        if (removed) setBookmarks((prev) => [...prev, removed]);
-        toast.error(ERROR_TOAST);
-      }
-    },
-    [bookId, bookmarks],
-  );
 
   // Selection -> highlight popover. Only the page holding the start of the selection counts; on it, the
   // rects whose centre lies inside the page box are used (a selection spanning pages keeps its first page).
@@ -445,63 +407,12 @@ export function PdfReader({ data }: { data: ReaderData }) {
       if (!pending) return;
       const p = pending;
       setPending(null);
-      const res = await addHighlightAction({ id: bookId, page: p.page, rects: p.rects, text: p.text, color });
-      if (!res.ok) {
-        toast.error(ERROR_TOAST);
-        return;
-      }
-      window.getSelection()?.removeAllRanges();
-      const trimmed = note.trim();
-      setHighlights((prev) => [...prev, { ...res.data, note: trimmed || null }]);
-      if (trimmed) {
-        const upd = await updateHighlightAction({ id: bookId, highlightId: res.data.id, note: trimmed });
-        if (!upd.ok) {
-          setHighlights((prev) => prev.map((h) => (h.id === res.data.id ? { ...h, note: null } : h)));
-          toast.error(ERROR_TOAST);
-        }
-      }
+      await addHighlight({ page: p.page, rects: p.rects, text: p.text }, color, note, () => window.getSelection()?.removeAllRanges());
     },
-    [bookId, pending],
-  );
-
-  const updateHighlight = useCallback(
-    async (highlightId: string, patch: { note?: string | null; color?: string }) => {
-      const before = highlights.find((h) => h.id === highlightId);
-      if (!before) return;
-      setHighlights((prev) => prev.map((h) => (h.id === highlightId ? { ...h, ...patch } : h)));
-      const res = await updateHighlightAction({ id: bookId, highlightId, ...patch });
-      if (!res.ok) {
-        setHighlights((prev) => prev.map((h) => (h.id === highlightId ? before : h)));
-        toast.error(ERROR_TOAST);
-      }
-    },
-    [bookId, highlights],
-  );
-
-  const removeHighlight = useCallback(
-    async (highlightId: string) => {
-      const removed = highlights.find((h) => h.id === highlightId);
-      setHighlights((prev) => prev.filter((h) => h.id !== highlightId));
-      const res = await removeHighlightAction({ id: bookId, highlightId });
-      if (!res.ok) {
-        if (removed) setHighlights((prev) => [...prev, removed]);
-        toast.error(ERROR_TOAST);
-      }
-    },
-    [bookId, highlights],
+    [pending, addHighlight],
   );
 
   const togglePanel = useCallback(() => setPanelOpen((o) => !o), []);
-
-  async function markFinished() {
-    const res = await updateBookStatus({ id: bookId, status: "finished" });
-    if (res.ok) {
-      setStatus("finished");
-      toast.success(STATUS_TOASTS.finished);
-    } else {
-      toast.error(res.error);
-    }
-  }
 
   if (error) return <ReaderOpenError backHref={backHref} />;
 
@@ -588,15 +499,7 @@ export function PdfReader({ data }: { data: ReaderData }) {
           onClose={closePopover}
         />
       ) : null}
-      {showFinish ? (
-        <div className="flex items-center justify-center gap-3 border-t bg-background px-4 py-3">
-          <p className="text-sm text-muted-foreground">You&apos;ve reached the last page.</p>
-          <Button size="sm" onClick={() => void markFinished()}>
-            <CircleCheck aria-hidden="true" />
-            Mark as finished
-          </Button>
-        </div>
-      ) : null}
+      {showFinish ? <FinishBanner message={"You've reached the last page."} onFinish={() => void markFinished()} /> : null}
     </>
   );
 }
