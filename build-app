@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# One command: ./build-app "describe your app"
+exec node "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tools/app-pipeline/bin/build-app.mjs" "$@"
