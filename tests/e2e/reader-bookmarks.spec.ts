@@ -179,3 +179,27 @@ test("scroll mode at low zoom: jumping to a page that cannot reach the top keeps
   await expect(pageInput(page)).toHaveValue("4");
   await expect(page.getByRole("button", { name: "Mark as finished" })).toHaveCount(0);
 });
+
+test("scroll mode: reading through a long PDF keeps only nearby pages mounted", async ({ page }) => {
+  await openReader(page, 40);
+  await page.getByRole("combobox", { name: "View mode" }).selectOption("scroll");
+  await expect(page.locator("[data-page-slot]")).toHaveCount(40);
+  const scroller = page.locator("[data-page-slot]").first().locator("xpath=../..");
+  // Scroll down a screen at a time, like reading, until the bottom.
+  for (let i = 0; i < 200; i++) {
+    const atEnd = await scroller.evaluate((el) => {
+      el.scrollTop += el.clientHeight;
+      return el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
+    });
+    await page.waitForTimeout(50);
+    if (atEnd) break;
+  }
+  await expect(pageInput(page)).toHaveValue("40");
+  await expect(page.getByRole("button", { name: "Mark as finished" })).toBeVisible();
+  await expect(page.getByText("Page 40 marker")).toBeVisible();
+  await expect.poll(() => page.locator("[data-page-slot] canvas").count()).toBeLessThanOrEqual(12);
+  // Far pages come back when jumped to.
+  await page.keyboard.press("Home");
+  await expect(pageInput(page)).toHaveValue("1");
+  await expect(page.getByText("Page 1 marker")).toBeVisible();
+});

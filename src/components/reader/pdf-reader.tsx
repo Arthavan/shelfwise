@@ -23,38 +23,50 @@ import type { SearchHit } from "@/lib/reading";
 
 const DEFAULT_ZOOM = 1.25;
 
-/** Scroll-mode placeholder: reserves the estimated height and mounts the page once near the viewport. */
+/**
+ * Scroll-mode slot: mounts its page while it is within a few screens of the viewport and unmounts it
+ * again when it scrolls far away, so long documents keep only nearby pages (and canvases) in memory.
+ * The slot keeps the page's last rendered height (or the estimate) so the scroll height stays stable.
+ */
 function LazyPage({
   pageNumber,
-  minHeight,
+  estimatedHeight,
+  scale,
   root,
   children,
 }: {
   pageNumber: number;
-  minHeight: number;
+  estimatedHeight: number;
+  scale: number;
   root: React.RefObject<HTMLDivElement | null>;
   children: React.ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [visible, setVisible] = useState(false);
+  const [near, setNear] = useState(false);
+  // Height at scale 1 measured while mounted, so an unmounted slot keeps the real size at any zoom.
+  const [unitHeight, setUnitHeight] = useState<number | null>(null);
   useEffect(() => {
     const el = ref.current;
-    if (!el || visible) return;
+    if (!el) return;
     const io = new IntersectionObserver(
       (entries) => {
-        if (entries.some((e) => e.isIntersecting)) {
-          setVisible(true);
-          io.disconnect();
+        const entry = entries[entries.length - 1];
+        if (!entry.isIntersecting) {
+          const h = el.getBoundingClientRect().height;
+          if (h > 0) setUnitHeight(h / scale);
         }
+        setNear(entry.isIntersecting);
       },
-      { root: root.current, rootMargin: "800px 0px" },
+      // Mount within two screens above or below; unmount beyond that.
+      { root: root.current, rootMargin: "200% 0px" },
     );
     io.observe(el);
     return () => io.disconnect();
-  }, [root, visible]);
+  }, [root, scale]);
+  const minHeight = unitHeight !== null ? unitHeight * scale : estimatedHeight;
   return (
     <div ref={ref} data-page-slot={pageNumber} className="flex justify-center" style={{ minHeight }}>
-      {visible ? children : null}
+      {near ? children : null}
     </div>
   );
 }
@@ -467,7 +479,7 @@ export function PdfReader({ data }: { data: ReaderData }) {
         ) : (
           <div className="flex flex-col gap-6">
             {Array.from({ length: pdf.numPages }, (_, i) => i + 1).map((n) => (
-              <LazyPage key={n} pageNumber={n} minHeight={(baseSize?.h ?? 792) * zoom} root={containerRef}>
+              <LazyPage key={n} pageNumber={n} estimatedHeight={(baseSize?.h ?? 792) * zoom} scale={zoom} root={containerRef}>
                 <PdfPage pdf={pdf} pageNumber={n} scale={zoom} theme={pageTheme} highlights={pageHighlights(n)} searchQuery={searchOpen ? debouncedQuery : ""} />
               </LazyPage>
             ))}

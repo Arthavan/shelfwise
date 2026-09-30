@@ -38,12 +38,15 @@ export function PdfPage({ pdf, pageNumber, scale, theme, highlights, searchQuery
 
   useEffect(() => {
     textRef.current?.replaceChildren(); // drop the previous page's spans while the new canvas renders
+    const canvasEl = canvasRef.current;
     let cancelled = false;
+    let pdfPage: { cleanup(): boolean } | null = null;
     let renderTask: { cancel(): void; promise: Promise<unknown> } | null = null;
     let textLayer: { cancel(): void; render(): Promise<unknown> } | null = null;
     (async () => {
       const pdfjs = await loadPdfjs();
       const page = await pdf.getPage(pageNumber);
+      pdfPage = page;
       if (cancelled) return;
       const viewport = page.getViewport({ scale });
       const canvas = canvasRef.current;
@@ -76,6 +79,12 @@ export function PdfPage({ pdf, pageNumber, scale, theme, highlights, searchQuery
       cancelled = true;
       renderTask?.cancel();
       textLayer?.cancel();
+      // Free pdf.js page resources and the canvas bitmap (the next render sizes the canvas again).
+      pdfPage?.cleanup();
+      if (canvasEl) {
+        canvasEl.width = 0;
+        canvasEl.height = 0;
+      }
     };
   }, [pdf, pageNumber, scale, onTextReady]);
 
