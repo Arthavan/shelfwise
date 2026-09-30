@@ -188,3 +188,10 @@
     }
   }
 }
+
+/* Reader: coarse (span-level) search hits in the PDF text layer. */
+.textLayer span.search-hit {
+  background: rgba(250, 204, 21, 0.55);
+  color: transparent;
+  border-radius: 2px;
+}

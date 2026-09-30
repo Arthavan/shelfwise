@@ -5,6 +5,7 @@ import {
   bookFormSchema,
   goalSchema,
   idSchema,
+  progressSchema,
   rateSchema,
   resetSchema,
   statusChangeSchema,
@@ -132,5 +133,21 @@ describe("resetSchema", () => {
   it("accepts demo and empty only", () => {
     expect(resetSchema.parse({ mode: "empty" })).toEqual({ mode: "empty" });
     expect(resetSchema.safeParse({ mode: "wipe" }).success).toBe(false);
+  });
+});
+
+describe("progressSchema", () => {
+  const ok = { id: "b1", location: "3", percent: 60, zoom: 1.25, viewMode: "page", pageTheme: "light" } as const;
+  it("accepts a valid payload, including a null zoom", () => {
+    expect(progressSchema.safeParse(ok).success).toBe(true);
+    expect(progressSchema.safeParse({ ...ok, zoom: null }).success).toBe(true);
+  });
+  it("rejects out-of-range percent and zoom, empty location and unknown enums", () => {
+    expect(progressSchema.safeParse({ ...ok, percent: 101 }).success).toBe(false);
+    expect(progressSchema.safeParse({ ...ok, percent: 1.5 }).success).toBe(false);
+    expect(progressSchema.safeParse({ ...ok, zoom: 4 }).success).toBe(false);
+    expect(progressSchema.safeParse({ ...ok, location: "" }).success).toBe(false);
+    expect(progressSchema.safeParse({ ...ok, viewMode: "spread" }).success).toBe(false);
+    expect(progressSchema.safeParse({ ...ok, pageTheme: "blue" }).success).toBe(false);
   });
 });

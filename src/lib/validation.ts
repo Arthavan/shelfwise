@@ -74,3 +74,12 @@ export const goalSchema = z.object({
 });
 
 export const resetSchema = z.object({ mode: z.enum(["demo", "empty"]).default("demo") });
+
+export const progressSchema = z.object({
+  id: idSchema,
+  location: z.string().min(1).max(500),
+  percent: z.number().int().min(0).max(100),
+  zoom: z.number().min(0.5).max(3).nullable(),
+  viewMode: z.enum(["page", "scroll"]),
+  pageTheme: z.enum(["light", "sepia", "dark"]),
+});
