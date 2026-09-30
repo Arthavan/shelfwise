@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "postinstall": "prisma generate && node scripts/copy-pdf-worker.mjs",
-    "predev": "prisma migrate deploy",
+    "predev": "prisma migrate deploy && node scripts/copy-pdf-worker.mjs",
     "dev": "next dev",
     "build": "prisma generate && node scripts/copy-pdf-worker.mjs && next build",
     "prestart": "prisma migrate deploy",

@@ -5,9 +5,9 @@ import { revalidatePath } from "next/cache";
 import { ERROR_TOAST } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { ensureInitialized } from "@/lib/data/maintenance";
-import { saveProgress, startReading } from "@/lib/data/reading";
-import type { ActionResult, ProgressInfo } from "@/lib/types";
-import { idSchema, progressSchema } from "@/lib/validation";
+import { addBookmark, removeBookmark, saveProgress, startReading } from "@/lib/data/reading";
+import type { ActionResult, BookmarkInfo, ProgressInfo } from "@/lib/types";
+import { bookmarkRemoveSchema, bookmarkSchema, idSchema, progressSchema } from "@/lib/validation";
 
 /** Runs once when the reader opens: stamps lastReadAt and moves a Want to read book to Reading. */
 export async function startReadingAction(input: { id: string }): Promise<ActionResult> {
@@ -38,6 +38,30 @@ export async function saveProgressAction(input: {
   try {
     await ensureInitialized(db);
     await saveProgress(db, id, p, new Date());
+    return { ok: true, data: null };
+  } catch {
+    return { ok: false, error: ERROR_TOAST };
+  }
+}
+
+export async function addBookmarkAction(input: { id: string; location: string; label?: string }): Promise<ActionResult<BookmarkInfo>> {
+  const parsed = bookmarkSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: ERROR_TOAST };
+  try {
+    await ensureInitialized(db);
+    const bookmark = await addBookmark(db, parsed.data.id, parsed.data.location, parsed.data.label || null);
+    return { ok: true, data: bookmark };
+  } catch {
+    return { ok: false, error: ERROR_TOAST };
+  }
+}
+
+export async function removeBookmarkAction(input: { id: string; bookmarkId: string }): Promise<ActionResult> {
+  const parsed = bookmarkRemoveSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: ERROR_TOAST };
+  try {
+    await ensureInitialized(db);
+    await removeBookmark(db, parsed.data.id, parsed.data.bookmarkId);
     return { ok: true, data: null };
   } catch {
     return { ok: false, error: ERROR_TOAST };

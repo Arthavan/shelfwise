@@ -9,7 +9,7 @@
  */
 import { expect, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 
-import { makePdf } from "./fixtures/make-pdf";
+import { makePdf, numberedPages } from "./fixtures/make-pdf";
 
 export type ResetMode = "demo" | "empty";
 
@@ -111,4 +111,12 @@ export async function statNumber(page: Page, cardName: string): Promise<number> 
 export async function uploadPdf(page: Page, pages: string[], name = "sample.pdf"): Promise<void> {
   await page.getByTestId("book-file-input").setInputFiles({ name, mimeType: "application/pdf", buffer: makePdf(pages) });
   await expect(toast(page, "File attached")).toBeVisible();
+}
+
+/** Piranesi (Want to read in the demo data): attach a numbered-page PDF and open the reader on it. */
+export async function openReader(page: Page, pages = 5, title = "Piranesi"): Promise<void> {
+  await openDetail(page, title);
+  await uploadPdf(page, numberedPages(pages));
+  await page.getByRole("link", { name: "Read", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Page" })).toHaveValue("1");
 }

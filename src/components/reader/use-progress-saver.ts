@@ -1,5 +1,8 @@
 "use client";
 import { useCallback, useEffect, useRef } from "react";
+import { toast } from "sonner";
+
+import { ERROR_TOAST } from "@/lib/constants";
 
 export type ProgressPayload = {
   location: string;
@@ -12,6 +15,7 @@ export type ProgressPayload = {
 /** Debounces progress saves; flushes on tab hide, page hide and unmount. */
 export function useProgressSaver(save: (p: ProgressPayload) => Promise<unknown>, delayMs = 1000) {
   const pending = useRef<ProgressPayload | null>(null);
+  const failing = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveRef = useRef(save);
   useEffect(() => {
@@ -23,7 +27,26 @@ export function useProgressSaver(save: (p: ProgressPayload) => Promise<unknown>,
     timer.current = null;
     const p = pending.current;
     pending.current = null;
-    if (p) void saveRef.current(p);
+    if (!p) return;
+    void (async () => {
+      let ok = true;
+      try {
+        const res = (await saveRef.current(p)) as { ok?: boolean } | undefined;
+        if (res && res.ok === false) ok = false;
+      } catch {
+        ok = false;
+      }
+      if (ok) {
+        failing.current = false;
+        return;
+      }
+      // Keep the payload for the next schedule/flush (a newer one wins); tell the reader once per failure streak.
+      if (!pending.current) pending.current = p;
+      if (!failing.current) {
+        failing.current = true;
+        toast.error(ERROR_TOAST);
+      }
+    })();
   }, []);
 
   const schedule = useCallback(

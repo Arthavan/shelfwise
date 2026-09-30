@@ -1,14 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { numberedPages } from "./fixtures/make-pdf";
-import { openDetail, resetData, uploadPdf } from "./helpers";
-
-async function openReader(page: import("@playwright/test").Page, pages = 5) {
-  await openDetail(page, "Piranesi");
-  await uploadPdf(page, numberedPages(pages));
-  await page.getByRole("link", { name: "Read", exact: true }).click();
-  await expect(page.getByRole("textbox", { name: "Page" })).toHaveValue("1");
-}
+import { openDetail, openReader, resetData } from "./helpers";
 
 test.beforeEach(async ({ request }) => {
   await resetData(request, "demo");
@@ -72,4 +64,18 @@ test("an unreadable PDF shows a clear message with a re-upload path", async ({ p
   // Next's route announcer is also role="alert", so pick ours by its text.
   await expect(page.getByRole("alert").filter({ hasText: "couldn't open this file" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Back to book" })).toBeVisible();
+  // A file that fails to open must not flip a Want to read book to Reading.
+  await page.getByRole("link", { name: "Back to book" }).click();
+  await expect(page.getByRole("combobox", { name: "Status for Piranesi" })).toHaveValue("want");
+});
+
+test("typing a page past the end snaps the field back to the real page", async ({ page }) => {
+  await openReader(page, 5);
+  const input = page.getByRole("textbox", { name: "Page" });
+  await input.fill("5");
+  await input.press("Enter");
+  await expect(input).toHaveValue("5");
+  await input.fill("99");
+  await input.press("Enter");
+  await expect(input).toHaveValue("5");
 });

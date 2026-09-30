@@ -1,5 +1,5 @@
 "use client";
-import "pdfjs-dist/web/pdf_viewer.css";
+import "pdfjs-dist/legacy/web/pdf_viewer.css";
 import { useEffect, useRef, useState } from "react";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 
@@ -37,6 +37,7 @@ export function PdfPage({ pdf, pageNumber, scale, theme, highlights, searchQuery
   const [textVersion, setTextVersion] = useState(0);
 
   useEffect(() => {
+    textRef.current?.replaceChildren(); // drop the previous page's spans while the new canvas renders
     let cancelled = false;
     let renderTask: { cancel(): void; promise: Promise<unknown> } | null = null;
     let textLayer: { cancel(): void; render(): Promise<unknown> } | null = null;

@@ -83,3 +83,6 @@ export const progressSchema = z.object({
   viewMode: z.enum(["page", "scroll"]),
   pageTheme: z.enum(["light", "sepia", "dark"]),
 });
+
+export const bookmarkSchema = z.object({ id: idSchema, location: z.string().min(1).max(500), label: z.string().trim().max(200).optional() });
+export const bookmarkRemoveSchema = z.object({ id: idSchema, bookmarkId: idSchema });

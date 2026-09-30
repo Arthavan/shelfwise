@@ -5,15 +5,17 @@ import { ArrowLeft, CircleCheck } from "lucide-react";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import { toast } from "sonner";
 
-import { saveProgressAction, startReadingAction } from "@/app/books/[id]/read/actions";
+import { addBookmarkAction, removeBookmarkAction, saveProgressAction, startReadingAction } from "@/app/books/[id]/read/actions";
 import { updateBookStatus } from "@/app/books/status-actions";
+import { pdfOutlineToItems, type OutlineItem } from "@/components/reader/outline";
 import { PdfPage } from "@/components/reader/pdf-page";
 import { loadPdf } from "@/components/reader/pdf-loader";
 import { ReaderToolbar } from "@/components/reader/reader-toolbar";
+import { SidePanel, type PanelTab } from "@/components/reader/side-panel";
 import type { ReaderData } from "@/components/reader/types";
 import { useProgressSaver, type ProgressPayload } from "@/components/reader/use-progress-saver";
 import { Button } from "@/components/ui/button";
-import { STATUS_TOASTS } from "@/lib/constants";
+import { ERROR_TOAST, STATUS_TOASTS } from "@/lib/constants";
 import { clampPage, clampZoom, percentFor, type PageTheme, type ViewMode } from "@/lib/reading";
 import type { BookmarkInfo, BookStatus, HighlightInfo } from "@/lib/types";
 
@@ -80,8 +82,11 @@ export function PdfReader({ data }: { data: ReaderData }) {
   const [pageTheme, setPageTheme] = useState<PageTheme>(initial.pageTheme);
   const [status, setStatus] = useState<BookStatus>(data.status);
   const [baseSize, setBaseSize] = useState<{ w: number; h: number } | null>(null);
-  // Held now; bookmarks, highlights and search are wired up in Tasks 7-9.
-  const [bookmarks] = useState<BookmarkInfo[]>(data.bookmarks);
+  const [bookmarks, setBookmarks] = useState<BookmarkInfo[]>(data.bookmarks);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [panelTab, setPanelTab] = useState<PanelTab>("contents");
+  const [outline, setOutline] = useState<OutlineItem[]>([]);
+  // Held now; highlights and search are wired up in Tasks 8-9.
   const [highlights] = useState<HighlightInfo[]>(data.highlights);
   const [searchQuery] = useState("");
 
@@ -89,7 +94,8 @@ export function PdfReader({ data }: { data: ReaderData }) {
   /** Page to scroll to in scroll mode (set by user navigation, mode switch and zoom; not by scrolling). */
   const pendingScroll = useRef<number | null>(initial.page); // resuming in scroll mode scrolls to the saved page
   const started = useRef(false);
-  const lastSavedKey = useRef(JSON.stringify([initial.page, initial.zoom, initial.viewMode, initial.pageTheme]));
+  // Seeded from the raw stored location (not the clamped page) so a stored page past the end is corrected on save.
+  const lastSavedKey = useRef(JSON.stringify([Number(progress?.location ?? 1), initial.zoom, initial.viewMode, initial.pageTheme]));
 
   const numPages = pdf?.numPages ?? null;
   // Known from the upload before the document loads, so navigation works immediately; the real count wins.
@@ -113,6 +119,11 @@ export function PdfReader({ data }: { data: ReaderData }) {
         setBaseSize({ w: vp.width, h: vp.height });
         setPage((p) => clampPage(p, d.numPages));
         setPdf(d);
+        // Only a file that opened counts as reading (stamps lastReadAt, Want to read -> Reading).
+        if (!started.current) {
+          started.current = true;
+          void startReadingAction({ id: bookId });
+        }
       })
       .catch(() => {
         // Damaged, truncated or password-protected (PasswordException): same message.
@@ -122,14 +133,21 @@ export function PdfReader({ data }: { data: ReaderData }) {
       cancelled = true;
       if (doc) void doc.loadingTask.destroy();
     };
-  }, [data.fileUrl]);
+  }, [data.fileUrl, bookId]);
 
-  // Opening the reader counts as reading: stamps lastReadAt, moves Want to read to Reading.
+  // Table of contents.
   useEffect(() => {
-    if (started.current) return;
-    started.current = true;
-    void startReadingAction({ id: bookId });
-  }, [bookId]);
+    if (!pdf) return;
+    let cancelled = false;
+    pdfOutlineToItems(pdf)
+      .then((items) => {
+        if (!cancelled) setOutline(items);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [pdf]);
 
   // Debounced progress saving. Positions equal to the last known one (initially the one we opened at)
   // are not re-saved, so opening a book does not rewrite an identical position.
@@ -142,6 +160,8 @@ export function PdfReader({ data }: { data: ReaderData }) {
     lastSavedKey.current = key;
     schedule({ location: String(page), percent: percentFor(page, pdf.numPages), zoom, viewMode, pageTheme });
   }, [page, zoom, viewMode, pageTheme, pdf, schedule]);
+
+  const toggleBookmarkRef = useRef<() => Promise<void>>(async () => {});
 
   const goTo = useCallback(
     (n: number) => {
@@ -173,26 +193,40 @@ export function PdfReader({ data }: { data: ReaderData }) {
     const root = containerRef.current;
     if (!root || !pdf || viewMode !== "scroll") return;
     const visiblePx = new Map<number, number>();
+    const lastPage = pdf.numPages;
+    function recompute() {
+      // Scrolled to the very end: the last page is current even if a taller page above shows more pixels.
+      const scrollable = root!.scrollHeight > root!.clientHeight + 1;
+      if (scrollable && root!.scrollTop + root!.clientHeight >= root!.scrollHeight - 1) {
+        setPage(lastPage);
+        return;
+      }
+      let best = 0;
+      let bestPx = 0;
+      for (const [n, px] of visiblePx) {
+        if (px > bestPx || (px === bestPx && px > 0 && n < best)) {
+          best = n;
+          bestPx = px;
+        }
+      }
+      if (best > 0) setPage(best);
+    }
     const io = new IntersectionObserver(
       (entries) => {
         for (const e of entries) {
           const n = Number((e.target as HTMLElement).dataset.pageSlot);
           visiblePx.set(n, e.isIntersecting ? e.intersectionRect.height : 0);
         }
-        let best = 0;
-        let bestPx = 0;
-        for (const [n, px] of visiblePx) {
-          if (px > bestPx || (px === bestPx && px > 0 && n < best)) {
-            best = n;
-            bestPx = px;
-          }
-        }
-        if (best > 0) setPage(best);
+        recompute();
       },
       { root, threshold: Array.from({ length: 11 }, (_, i) => i / 10) },
     );
     root.querySelectorAll("[data-page-slot]").forEach((el) => io.observe(el));
-    return () => io.disconnect();
+    root.addEventListener("scroll", recompute, { passive: true });
+    return () => {
+      io.disconnect();
+      root.removeEventListener("scroll", recompute);
+    };
   }, [pdf, viewMode]);
 
   // Keyboard navigation.
@@ -205,6 +239,11 @@ export function PdfReader({ data }: { data: ReaderData }) {
       else if (e.key === "ArrowLeft" || e.key === "PageUp") target = page - 1;
       else if (e.key === "Home") target = 1;
       else if (e.key === "End") target = pageCount;
+      else if ((e.key === "b" || e.key === "B") && !e.shiftKey) {
+        e.preventDefault();
+        void toggleBookmarkRef.current();
+        return;
+      }
       if (target === null) return;
       e.preventDefault();
       goTo(target);
@@ -242,6 +281,41 @@ export function PdfReader({ data }: { data: ReaderData }) {
 
   const noop = useCallback(() => {}, []);
 
+  const currentBookmark = bookmarks.find((b) => b.location === String(page));
+  const toggleBookmark = useCallback(async () => {
+    if (currentBookmark) {
+      const removed = currentBookmark;
+      setBookmarks((prev) => prev.filter((b) => b.id !== removed.id));
+      const res = await removeBookmarkAction({ id: bookId, bookmarkId: removed.id });
+      if (!res.ok) {
+        setBookmarks((prev) => (prev.some((b) => b.id === removed.id) ? prev : [...prev, removed]));
+        toast.error(ERROR_TOAST);
+      }
+      return;
+    }
+    const res = await addBookmarkAction({ id: bookId, location: String(page) });
+    if (res.ok) setBookmarks((prev) => (prev.some((b) => b.id === res.data.id) ? prev : [...prev, res.data]));
+    else toast.error(ERROR_TOAST);
+  }, [bookId, page, currentBookmark]);
+  useEffect(() => {
+    toggleBookmarkRef.current = toggleBookmark;
+  });
+
+  const removeBookmark = useCallback(
+    async (bookmarkId: string) => {
+      const removed = bookmarks.find((b) => b.id === bookmarkId);
+      setBookmarks((prev) => prev.filter((b) => b.id !== bookmarkId));
+      const res = await removeBookmarkAction({ id: bookId, bookmarkId });
+      if (!res.ok) {
+        if (removed) setBookmarks((prev) => [...prev, removed]);
+        toast.error(ERROR_TOAST);
+      }
+    },
+    [bookId, bookmarks],
+  );
+
+  const togglePanel = useCallback(() => setPanelOpen((o) => !o), []);
+
   async function markFinished() {
     const res = await updateBookStatus({ id: bookId, status: "finished" });
     if (res.ok) {
@@ -270,7 +344,7 @@ export function PdfReader({ data }: { data: ReaderData }) {
   }
 
   const pageHighlights = (n: number) => highlights.filter((h) => h.page === n);
-  const bookmarked = bookmarks.some((b) => b.location === String(page));
+  const bookmarked = currentBookmark !== undefined;
   const showFinish = pdf !== null && page === pdf.numPages && status !== "finished";
 
   return (
@@ -287,16 +361,17 @@ export function PdfReader({ data }: { data: ReaderData }) {
         theme={pageTheme}
         onTheme={setPageTheme}
         onToggleFullscreen={toggleFullscreen}
-        onToggleSidebar={noop}
+        onToggleSidebar={togglePanel}
         onToggleSearch={noop}
         bookmarked={bookmarked}
-        onToggleBookmark={noop}
+        onToggleBookmark={() => void toggleBookmark()}
         backHref={backHref}
         // Queue the pending save ahead of the navigation, which reads progress for the detail page.
         onBack={flush}
         title={data.title}
       />
-      <div ref={containerRef} className="min-h-0 flex-1 overflow-auto bg-muted/60 px-4 py-6">
+      <div className="flex min-h-0 flex-1">
+      <div ref={containerRef} className="min-h-0 min-w-0 flex-1 overflow-auto bg-muted/60 px-4 py-6">
         {!pdf ? (
           <p className="text-center text-sm text-muted-foreground">Opening…</p>
         ) : viewMode === "page" ? (
@@ -310,6 +385,20 @@ export function PdfReader({ data }: { data: ReaderData }) {
             ))}
           </div>
         )}
+      </div>
+      {panelOpen ? (
+        <SidePanel
+          tab={panelTab}
+          onTab={setPanelTab}
+          bookmarks={bookmarks}
+          highlights={highlights}
+          outline={outline}
+          currentPage={page}
+          onGoToPage={goTo}
+          onRemoveBookmark={(id) => void removeBookmark(id)}
+          onClose={() => setPanelOpen(false)}
+        />
+      ) : null}
       </div>
       {showFinish ? (
         <div className="flex items-center justify-center gap-3 border-t bg-background px-4 py-3">

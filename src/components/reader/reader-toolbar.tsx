@@ -49,7 +49,7 @@ function PageInput({ page, pageCount, onPage }: { page: number; pageCount: numbe
   function commit() {
     const n = Number(draft.trim());
     if (draft.trim() !== "" && Number.isFinite(n) && n !== page) onPage(n);
-    else setDraft(String(page));
+    setDraft(String(page)); // always show the real page (a clamped "99" must not linger)
   }
   return (
     <input
