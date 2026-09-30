@@ -36,6 +36,8 @@ interface ReaderToolbarProps {
   bookmarked: boolean;
   onToggleBookmark: () => void;
   backHref: string;
+  /** Runs before navigating back (the reader flushes pending progress so the detail page sees it). */
+  onBack?: () => void;
   title: string;
 }
 
@@ -76,7 +78,7 @@ export function ReaderToolbar(props: ReaderToolbarProps) {
   return (
     <div className="flex flex-wrap items-center gap-2 border-b bg-background px-3 py-2">
       <Button asChild variant="ghost" size="icon-sm">
-        <Link href={props.backHref} aria-label="Back to book">
+        <Link href={props.backHref} aria-label="Back to book" onClick={props.onBack}>
           <ArrowLeft aria-hidden="true" />
         </Link>
       </Button>

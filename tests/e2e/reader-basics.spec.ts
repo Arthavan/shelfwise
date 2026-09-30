@@ -41,6 +41,15 @@ test("resumes where you left off after a reload and from the detail page", async
   await expect(page.getByRole("link", { name: /Continue reading \(p\. 3 of 5/ })).toBeVisible();
 });
 
+test("going back right after a page turn shows the new position on the detail page", async ({ page }) => {
+  await openReader(page);
+  await page.getByRole("button", { name: "Next page" }).click();
+  await page.getByRole("button", { name: "Next page" }).click();
+  await expect(page.getByRole("textbox", { name: "Page" })).toHaveValue("3");
+  await page.getByRole("link", { name: "Back to book" }).click(); // no debounce wait
+  await expect(page.getByRole("link", { name: /Continue reading \(p\. 3 of 5/ })).toBeVisible();
+});
+
 test("first open moves a Want to read book to Reading", async ({ page }) => {
   await openReader(page);
   await page.getByRole("link", { name: "Back to book" }).click();

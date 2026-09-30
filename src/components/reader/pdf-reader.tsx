@@ -134,7 +134,7 @@ export function PdfReader({ data }: { data: ReaderData }) {
   // Debounced progress saving. Positions equal to the last known one (initially the one we opened at)
   // are not re-saved, so opening a book does not rewrite an identical position.
   const save = useCallback((p: ProgressPayload) => saveProgressAction({ id: bookId, ...p }), [bookId]);
-  const { schedule } = useProgressSaver(save);
+  const { schedule, flush } = useProgressSaver(save);
   useEffect(() => {
     if (!pdf) return;
     const key = JSON.stringify([page, zoom, viewMode, pageTheme]);
@@ -292,6 +292,8 @@ export function PdfReader({ data }: { data: ReaderData }) {
         bookmarked={bookmarked}
         onToggleBookmark={noop}
         backHref={backHref}
+        // Queue the pending save ahead of the navigation, which reads progress for the detail page.
+        onBack={flush}
         title={data.title}
       />
       <div ref={containerRef} className="min-h-0 flex-1 overflow-auto bg-muted/60 px-4 py-6">
