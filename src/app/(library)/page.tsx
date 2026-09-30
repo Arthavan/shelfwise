@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
 
 import { BookGrid } from "@/components/books/book-grid";
+import { ClearSearchButton } from "@/components/books/clear-search-button";
 import { LibraryEmpty } from "@/components/books/library-empty";
+import { LibraryToolbar } from "@/components/books/library-toolbar";
+import { PickNextRead } from "@/components/books/pick-next-read";
 import { StatusTabs } from "@/components/books/status-tabs";
 import { listBooks } from "@/lib/data/books";
 import { buildLibraryHref, countByStatus, filterAndSortBooks, parseLibraryParams } from "@/lib/library";
@@ -20,11 +23,13 @@ export default async function LibraryPage({
   const counts = countByStatus(books);
   const visible = filterAndSortBooks(books, params);
 
+  const candidates = books.filter((b) => b.status === "want").map(({ id, title, author }) => ({ id, title, author }));
+
   let content: React.ReactNode;
   if (counts.all === 0) {
     content = <LibraryEmpty kind="shelf" />;
   } else if (params.q !== "" && visible.length === 0) {
-    content = <LibraryEmpty kind="search" query={params.q} />;
+    content = <LibraryEmpty kind="search" query={params.q} action={<ClearSearchButton params={params} />} />;
   } else if (visible.length === 0 && params.status !== "all") {
     content = <LibraryEmpty kind="tab" status={params.status} allHref={buildLibraryHref(params, { status: "all" })} />;
   } else {
@@ -40,7 +45,14 @@ export default async function LibraryPage({
         </div>
       </header>
       <StatusTabs params={params} counts={counts} />
-      <div id="library-toolbar-slot" className="mt-4" />
+      <div className="mt-4">
+        <LibraryToolbar params={params} />
+      </div>
+      {params.status === "want" && counts.want > 0 ? (
+        <div className="mt-4">
+          <PickNextRead candidates={candidates} />
+        </div>
+      ) : null}
       <div className="mt-6">{content}</div>
     </div>
   );
