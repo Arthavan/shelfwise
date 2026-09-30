@@ -1,0 +1,36 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Book {
+  id         String    @id @default(cuid())
+  title      String
+  author     String
+  status     String    @default("want")
+  pages      Int?
+  notes      String?
+  rating     Int?
+  startedAt  DateTime?
+  finishedAt DateTime?
+  deletedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([deletedAt, createdAt])
+  @@index([status])
+  @@index([finishedAt])
+}
+
+model AppSettings {
+  id         String    @id @default("app")
+  goalYear   Int?
+  goalTarget Int?
+  seededAt   DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+}

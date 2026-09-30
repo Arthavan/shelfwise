@@ -1,0 +1,1 @@
+{"install": "npm install", "lint": "npm run lint", "typecheck": "npx tsc --noEmit", "build": "npm run build", "test": "npx vitest run --passWithNoTests", "e2e": "npx playwright test", "e2e_list": "npx playwright test --list", "dev": "npm run dev", "start": "npm run start", "port": 3000, "testDir": "tests/e2e", "db_reset": "npm run db:reset"}
