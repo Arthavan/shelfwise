@@ -17,13 +17,20 @@ model Book {
   rating     Int?
   startedAt  DateTime?
   finishedAt DateTime?
+  lastReadAt DateTime?
   deletedAt  DateTime?
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
+  file       BookFile?
+  progress   ReadingProgress?
+  bookmarks  Bookmark[]
+  highlights Highlight[]
+
   @@index([deletedAt, createdAt])
   @@index([status])
   @@index([finishedAt])
+  @@index([lastReadAt])
 }
 
 model AppSettings {
@@ -33,4 +40,53 @@ model AppSettings {
   seededAt   DateTime?
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
+}
+
+model BookFile {
+  id           String   @id @default(cuid())
+  bookId       String   @unique
+  book         Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  format       String // "pdf" | "epub"
+  originalName String
+  storagePath  String // relative to DATA_DIR
+  sizeBytes    Int
+  pageCount    Int?
+  uploadedAt   DateTime @default(now())
+}
+
+model ReadingProgress {
+  bookId     String   @id
+  book       Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  location   String // PDF: page number as string; EPUB: CFI
+  percent    Int      @default(0)
+  zoom       Float?
+  viewMode   String   @default("page") // "page" | "scroll"
+  pageTheme  String   @default("light") // "light" | "sepia" | "dark"
+  lastReadAt DateTime @default(now())
+}
+
+model Bookmark {
+  id        String   @id @default(cuid())
+  bookId    String
+  book      Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  location  String // PDF: page number as string; EPUB: CFI
+  label     String?
+  createdAt DateTime @default(now())
+
+  @@index([bookId, createdAt])
+}
+
+model Highlight {
+  id        String   @id @default(cuid())
+  bookId    String
+  book      Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  page      Int? // PDF only
+  rects     String? // PDF only: JSON [{x,y,w,h}] as fractions
+  cfiRange  String? // EPUB only
+  text      String
+  color     String   @default("yellow")
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@index([bookId, page])
 }
