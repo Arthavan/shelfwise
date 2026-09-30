@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 
 const HEADING_CLASSES = {
   h1: "font-serif text-2xl font-medium tracking-tight sm:text-3xl",
-  h2: "font-serif text-xl font-medium",
+  h2: "max-w-full break-words font-serif text-xl font-medium",
 } as const;
 
 interface EmptyStateProps {
