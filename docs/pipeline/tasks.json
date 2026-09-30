@@ -1,0 +1,184 @@
+{
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Foundation: shared lib, data access, reset hook, common components, system pages",
+      "description": "Build everything the feature tasks import. The scaffold already has layout.tsx, SiteHeader, MainNav, ThemeToggle, ThemeProvider, components/ui/*, lib/db.ts, lib/demo-data.ts and lib/data/maintenance.ts: verify those against DESIGN.md §4.1/§5.1 and fix them, but do not rewrite them.\n\nCreate (ARCHITECTURE §4):\n- src/lib/types.ts: exactly the §4.0 types. This is the single source of shared types; later tasks must not add types elsewhere without a good reason.\n- src/lib/constants.ts (§4.6): STATUSES, STATUS_LABELS, STATUS_TOASTS, SORT_OPTIONS (en dash in 'Title (A–Z)', 'Author (A–Z)'), TOAST copy (§6.4), ERROR_TOAST, COVER_CLASSES (8 literal 'bg-cover-N text-cover-foreground' strings).\n- src/lib/format.ts (§4.5): formatDate, formatNumber, formatAverage, pluralize, starsLabel, rateButtonLabel, ratedLabel, monthBarLabel.\n- src/lib/cover.ts: getInitials ('The Hobbit'→'TH', 'Piranesi'→'P') and coverTone (djb2 mod 8 → 1..8).\n- src/lib/book-rules.ts (§4.1, D7): initialLifecycle, applyStatusChange, applyFormToLifecycle.\n- src/lib/validation.ts (§4.4, D8): bookFormSchema (trimmed; whitespace-only counts as empty; exact messages), toBookData, idSchema, statusChangeSchema, rateSchema, goalSchema (every failure → 'Enter a whole number from 1 to 999'), resetSchema.\n- Vitest unit tests colocated: format.test.ts, cover.test.ts, book-rules.test.ts (every D7 transition, including keeping started and clearing the rating), validation.test.ts (every D8 message, pages '0'/'1.5'/'abc'/'100001', goal range).\n- src/lib/data/books.ts ('server-only'): toBook (status type guard, fallback 'want'), listBooks() (ensureInitialized, deletedAt null, createdAt desc), getBook(id) (ensureInitialized; null for missing or soft-deleted).\n- src/lib/data/settings.ts ('server-only'): getReadingGoal(now), which returns the goal only when goalYear === now.getFullYear().\n- src/app/api/test/reset/route.ts (§6.3): POST only. Returns 404 unless E2E_TEST_HOOKS==='1' or NODE_ENV!=='production'. Body {mode:'demo'|'empty'}; invalid body → 400. 'demo' → replaceWithDemoData. 'empty' → removeAllBooks + clear the goal, keeping the AppSettings row so nothing re-seeds. Then revalidatePath('/', 'layout') and 200 {ok, mode, count}. Export dynamic='force-dynamic'.\n- src/components/common/empty-state.tsx (DESIGN §5.8): props {icon, title, description, action, as?: 'h1'|'h2' (default h2), bordered?: boolean (default true)}. The h1 variant uses the h1 type classes and border-0 (§6.7).\n- src/components/common/confirm-dialog.tsx (DESIGN §5.11), a 'use client' shadcn AlertDialog wrapper. Props {trigger: ReactNode, title, description, confirmLabel, destructive?: boolean, onConfirm: () => Promise<boolean>}. Resolving true closes the dialog; false keeps it open. The confirm button is disabled and shows a Loader2 while pending. Focus lands on Cancel. The footer stacks on phones with the primary on top.\n- src/components/books/book-cover.tsx (DESIGN §5.6): server-safe, aria-hidden, sizes sm/md/lg, spine and rules.\n- src/app/not-found.tsx ('Page not found', Compass icon, primary link 'Back to library'), src/app/error.tsx ('use client'; 'Something went wrong', 'Try again' runs startTransition(() => { router.refresh(); reset(); })), src/app/global-error.tsx (same copy inside its own <html><body>). See DESIGN §6.7–6.8.\n\nVerify/adjust in the scaffold:\n- components/ui: the §5.1 focus ring replaces ring-[3px]/ring-ring/50 in button, input, textarea, radio-group and native-select. Skeleton uses bg-muted. Button sizes default/sm/icon/icon-sm are as in §5.1. sonner.tsx uses position bottom-right with the §5.10 classNames and richColors off.\n- Header: at 375px, brand icon + 3 text nav links + icon-only 'Add book' link (aria-label at every size) + 'Toggle theme', with no horizontal scroll. Next-themes toggle persists the class.\n\nDone when: npx tsc --noEmit, lint and vitest pass; POST /api/test/reset works in dev with both modes; /nope shows 'Page not found'; the smoke e2e passes; AC-33 passes; the header portion of AC-34 passes on the placeholder pages.",
+      "depends_on": [],
+      "files": [
+        "src/lib/types.ts",
+        "src/lib/constants.ts",
+        "src/lib/format.ts",
+        "src/lib/format.test.ts",
+        "src/lib/cover.ts",
+        "src/lib/cover.test.ts",
+        "src/lib/book-rules.ts",
+        "src/lib/book-rules.test.ts",
+        "src/lib/validation.ts",
+        "src/lib/validation.test.ts",
+        "src/lib/data/books.ts",
+        "src/lib/data/settings.ts",
+        "src/lib/data/maintenance.ts",
+        "src/lib/db.ts",
+        "src/lib/utils.ts",
+        "src/app/api/test/reset/route.ts",
+        "src/app/not-found.tsx",
+        "src/app/error.tsx",
+        "src/app/global-error.tsx",
+        "src/app/layout.tsx",
+        "src/app/globals.css",
+        "src/components/common/empty-state.tsx",
+        "src/components/common/confirm-dialog.tsx",
+        "src/components/books/book-cover.tsx",
+        "src/components/layout/**",
+        "src/components/ui/**"
+      ],
+      "acs": ["AC-33", "AC-34"],
+      "size": "L"
+    },
+    {
+      "id": "T2",
+      "title": "Library shelf: status tabs, book cards, quick status select and star rating",
+      "description": "Covers F2, F3 and F4 on the library page. See ARCHITECTURE §4.2, §5.1, §6.1 (updateBookStatus/rateBook/clearRating), §6.4 (StatusSelect, RatingControl), §7, and DESIGN §5.3, §5.5, §5.7, §5.9, §6.1.\n\nBuild:\n- src/lib/library.ts, pure, plus library.test.ts: parseLibraryParams (invalid → all/recent/''; q trimmed, max 200), countByStatus (whole library, ignores q, D6), filterAndSortBooks (status + case-insensitive substring on title OR author + the 4 sorts; rating: rated desc, then unrated, ties by title), and buildLibraryHref (param order status,q,sort; defaults omitted; '/' when all default). Implement q and sort fully here even though the toolbar UI is T4. Tests cover the AC-30 order on buildDemoBooks(now): first 'A Wizard of Earthsea', last 'The Remains of the Day'.\n- src/app/books/status-actions.ts ('use server'): updateBookStatus, rateBook ('Only finished books can be rated' when not finished), clearRating. Each validates with zod and uses applyStatusChange. Not found or soft-deleted → {ok:false, error:'Book not found'}. Unexpected error → ERROR_TOAST. On success, revalidatePath('/', 'layout').\n- components/books/status-select.tsx ('use client'): a native select via NativeSelect with aria-label 'Status for {title}' and no visible label, plus the leading status dot. useOptimistic + useTransition, disabled while pending, toasts STATUS_TOASTS[status] or ERROR_TOAST.\n- components/books/rating-control.tsx ('use client'), props {bookId, rating, size:'sm'|'md'}.\n  - Unrated: role=group labelled by 'Rate this book', 5 buttons 'Rate 1 star'…'Rate 5 stars' with a hover/focus preview, and the text 'Not rated'.\n  - Rated: role=img aria-label 'Rated N out of 5' with no text node (D1), and 'Clear rating' (icon-only with aria-label on sm, text on md).\n  - Both states have equal height. Optimistic. Toasts: 'Rated N out of 5' / 'Rating cleared'.\n- components/books/book-card.tsx (<article aria-labelledby>, the h2 title link is the only link, author truncate, StatusSelect, RatingControl only when finished), book-grid.tsx (<ul aria-label='Books'>, grid 1/2/3 cols), status-tabs.tsx (tablist 'Filter by status'; Link role=tab with aria-selected; names exactly 'All · 12' with U+00B7; hrefs preserve q/sort via buildLibraryHref; the row scrolls inside its own container on phones).\n- components/books/library-empty.tsx: 'Your shelf is empty' + primary link 'Add your first book' → /books/new; `No books match \"{q}\"` (accept an action slot; T4 plugs in ClearSearchButton); 'No books in {Status label}' + outline link 'View all books'. Copy and icons per DESIGN §6.1.\n- components/books/skeletons.tsx: LibrarySkeleton, BookDetailSkeleton and BookFormSkeleton, all three. T5 imports the last two. Fixed widths, same chrome as the real content (DESIGN §5.9, §6.1, §6.3, §6.4).\n- src/app/(library)/page.tsx (force-dynamic; metadata title 'Library'): h1 'Library' + description, tabs, a mt-4 slot where T4 will put the toolbar, then content with the §5.1 precedence (a) empty shelf, (b) q no-match, (c) empty tab, (d) grid. Tabs stay visible over every empty state. (library)/loading.tsx renders LibrarySkeleton.\n\nEdge cases: never render a second 'Add book' link. Scope rating assertions per article, because several books share a rating.\n\nDone when: unit tests pass and AC-6, AC-7, AC-8 (use the reset hook's 'empty' mode), AC-10, AC-11, AC-13, and the card half of AC-14 pass in e2e.",
+      "depends_on": ["T1"],
+      "files": [
+        "src/lib/library.ts",
+        "src/lib/library.test.ts",
+        "src/app/(library)/page.tsx",
+        "src/app/(library)/loading.tsx",
+        "src/app/books/status-actions.ts",
+        "src/components/books/status-select.tsx",
+        "src/components/books/rating-control.tsx",
+        "src/components/books/book-card.tsx",
+        "src/components/books/book-grid.tsx",
+        "src/components/books/status-tabs.tsx",
+        "src/components/books/library-empty.tsx",
+        "src/components/books/skeletons.tsx"
+      ],
+      "acs": ["AC-6", "AC-7", "AC-8", "AC-10", "AC-11", "AC-13", "AC-14"],
+      "size": "L"
+    },
+    {
+      "id": "T3",
+      "title": "Add book form with validation, rating input and create/update actions",
+      "description": "Covers F1 (and the edit-mode groundwork for F6). See ARCHITECTURE §4.4, §5.2, §6.1 (createBook, updateBook), D3, D8, §7 'Form' rows, and DESIGN §5.4, §5.5 (RatingInput), §6.2.\n\nBuild:\n- src/app/books/actions.ts ('use server'):\n  - createBook(values): validate with bookFormSchema; on failure return {ok:false, error:'Please fix the highlighted fields', fieldErrors}. Create with toBookData + initialLifecycle(status, rating, now).\n  - updateBook(id, values): load a non-deleted row (else 'Book not found'), apply applyFormToLifecycle, update title/author/pages/notes.\n  - Both revalidatePath('/', 'layout') and return ActionResult<{id}>.\n- components/books/rating-input.tsx ('use client'): <fieldset> with legend 'Rating' (group 'Rating'); 5 type=button star buttons 'Rate N star(s)' with aria-pressed; 'Clear rating' ghost button shown only when a value is set.\n- components/books/book-form.tsx ('use client'): props {mode:'create'|'edit', book?}. Uses react-hook-form + zodResolver(bookFormSchema) with noValidate and the shadcn Form primitives, so aria-invalid and aria-describedby are wired.\n  - Fields in order: Title (autoFocus in create), Author, Status (native select with a visible label 'Status', default 'want') | Pages (type=text, inputMode numeric, placeholder 'e.g. 320'), Notes (textarea with an aria-hidden '{n} / 2000' counter).\n  - RatingInput renders only while the watched status is 'finished'. Switching away discards the rating (setValue null).\n  - 'Optional' tags sit outside the <label>, so the names stay exactly 'Pages' and 'Notes'.\n  - Submit reads 'Save book' / 'Save changes', becomes 'Saving…' with Loader2 while pending (disabled, min-w-28). 'Cancel' is an outline link to '/' (create) or '/books/{id}' (edit).\n  - Success: create → toast.success('Book added') + router.push('/'); edit → toast.success('Changes saved') + router.push('/books/{id}').\n  - fieldErrors → form.setError per field; any other error → toast.error(ERROR_TOAST).\n- src/app/books/new/page.tsx (static, metadata 'Add book'): page header h1 'Add book' + 'Save a book to your shelf.', then the form card max-w-xl.\n\nThe edit page itself is T5; make sure BookForm's edit mode prefills from a Book (pages → string, notes → '' when null).\n\nDone when: AC-1, AC-2, AC-4 and AC-5 pass. A valid submit creates the row and navigates to '/'; the card assertion of AC-3 is verified in T5 once the library exists.",
+      "depends_on": ["T1"],
+      "files": [
+        "src/app/books/actions.ts",
+        "src/app/books/new/page.tsx",
+        "src/components/books/book-form.tsx",
+        "src/components/books/rating-input.tsx"
+      ],
+      "acs": ["AC-1", "AC-2", "AC-4", "AC-5"],
+      "size": "M"
+    },
+    {
+      "id": "T4",
+      "title": "Library toolbar: search, sort and Pick my next read",
+      "description": "Covers F8 and F12. See ARCHITECTURE D6, D13, D14, §6.4 (LibraryToolbar, ClearSearchButton, PickNextRead), and DESIGN §5.7 'Toolbar', §4.5, §6.1 (pick-next strip, 'Your next read' dialog).\n\nBuild:\n- components/books/library-toolbar.tsx ('use client'), props {params}.\n  - Search: <input type=search aria-label='Search books' placeholder='Search title or author'> with a Search icon. There is no inline clear button.\n  - Behaviour: 300ms debounce, router.replace(buildLibraryHref(params, {q}), {scroll:false}); an empty query removes q. Local state resyncs from params.q only when the URL changed from elsewhere (track the last value pushed in a ref).\n  - Sort: a native select labelled 'Sort by' (<label htmlFor> that is sr-only below sm) with SORT_OPTIONS; changes apply immediately via router.replace.\n  - On phones, search sits full width with the sort below it.\n- components/books/clear-search-button.tsx ('use client'): outline button 'Clear search' → router.replace(buildLibraryHref(params, {q:''})).\n- components/books/pick-next-read.tsx ('use client'), props {candidates: BookSummary[]}.\n  - The strip reads \"Can't decide what to read next?\" with an outline button 'Pick my next read' (Shuffle icon).\n  - The button opens a Dialog 'Your next read' (description 'A random pick from your Want to read list.') with a md BookCover, an h3 title and the author, cross-faded per pick.\n  - 'Pick another' picks a different candidate and is disabled when there is exactly 1 candidate.\n  - 'Start reading' calls updateBookStatus({id, status:'reading'}), toasts 'Moved to Reading' and closes the dialog. Error → ERROR_TOAST.\n- Wire into src/app/(library)/page.tsx: the toolbar (mt-4); PickNextRead only when params.status==='want' && counts.want>0, with candidates = all want books unfiltered by q; and ClearSearchButton as the action of the no-match empty state in library-empty.tsx.\n- Adjust src/lib/library.ts only if a bug surfaces (T2 owns the logic).\n\nEdge cases: the search input must not be clobbered while typing; tabs keep q and sort; sort keeps q and status; no pagination.\n\nDone when: AC-28, AC-29, AC-30 and AC-36 pass, and the page has no horizontal scroll at 375px.",
+      "depends_on": ["T2"],
+      "files": [
+        "src/components/books/library-toolbar.tsx",
+        "src/components/books/clear-search-button.tsx",
+        "src/components/books/pick-next-read.tsx",
+        "src/app/(library)/page.tsx",
+        "src/components/books/library-empty.tsx",
+        "src/lib/library.ts",
+        "src/lib/library.test.ts"
+      ],
+      "acs": ["AC-28", "AC-29", "AC-30", "AC-36"],
+      "size": "M"
+    },
+    {
+      "id": "T5",
+      "title": "Book detail and edit pages (with Book not found)",
+      "description": "Covers F6 plus the detail-side behaviour of F3/F4, and closes the create→library loop of F1. See ARCHITECTURE §5.2, §5.3, D9, D16, §7 'Detail' rows, and DESIGN §5.7 'Definition rows', §6.3, §6.4, §6.7.\n\nBuild:\n- src/app/books/[id]/page.tsx (force-dynamic; generateMetadata → the title). getBook(id), and notFound() when it returns null.\n  - Layout: ghost 'Back to library' link (ArrowLeft, -ml-3), then the hero grid: lg BookCover; h1 in display style (break-words) + author; controls block with StatusSelect, RatingControl size 'md' only when finished, and an action row with an outline 'Edit' link (Pencil) → /books/{id}/edit.\n  - Leave room in the action row for the Delete button that T9 adds. Do not create delete UI here.\n  - Body grid holds two surfaces: 'Details' (BookDetails) and 'Notes' (whitespace-pre-wrap, or 'No notes yet').\n- components/books/book-details.tsx: a <dl class='divide-y'> with rows Pages, Added on, Started on, Finished on. Each row is <div><dt>Label</dt>{' '}<dd>Value</dd></div>, so the text reads 'Finished on Sep 30, 2026'. Unset values render '—'. Format on the server with formatDate/formatNumber.\n- src/app/books/[id]/loading.tsx → BookDetailSkeleton (from T2's skeletons.tsx).\n- src/app/books/[id]/not-found.tsx: EmptyState as h1 'Book not found', BookX icon, 'It may have been deleted, or the link is wrong.', primary link 'Back to library' → '/'. It also serves /edit.\n- src/app/books/[id]/edit/page.tsx (force-dynamic, metadata 'Edit book'): h1 'Edit book' + 'Update the details and save your changes.', then <BookForm mode='edit' book={book}>. notFound() on null. edit/loading.tsx → BookFormSkeleton.\n- Fix book-form.tsx / books/actions.ts (owned by T3) if edit mode needs it.\n\nVerify end to end:\n- AC-3: create → '/' with the new card first and status select value 'reading'.\n- AC-9: reset hook 'empty', add a want book, then the Reading tab shows 'No books in Reading'.\n- AC-12: finishing sets 'Finished on {today}'.\n- AC-16: Dune → Reading → Finished shows 'Not rated'.\n\nDone when: AC-3, AC-9, AC-12, the detail half of AC-14, AC-15, AC-16, AC-22, AC-23 and AC-24 pass.",
+      "depends_on": ["T2", "T3"],
+      "files": [
+        "src/app/books/[id]/page.tsx",
+        "src/app/books/[id]/loading.tsx",
+        "src/app/books/[id]/not-found.tsx",
+        "src/app/books/[id]/edit/page.tsx",
+        "src/app/books/[id]/edit/loading.tsx",
+        "src/components/books/book-details.tsx",
+        "src/components/books/book-form.tsx",
+        "src/app/books/actions.ts"
+      ],
+      "acs": ["AC-3", "AC-9", "AC-12", "AC-14", "AC-15", "AC-16", "AC-22", "AC-23", "AC-24"],
+      "size": "M"
+    },
+    {
+      "id": "T6",
+      "title": "Stats page: stat cards, monthly chart, rating distribution, empty state",
+      "description": "Covers F5, but not the goal, which is T7. See ARCHITECTURE §4.3, D4, D15, §5.4, §7 'Stats' rows, and DESIGN §4.4, §4.5, §5.7 'Stat card', §6.5.\n\nBuild:\n- src/lib/stats.ts: computeStats(books, now), pure, in server local time. finishedThisYear, pagesRead (null counts as 0), averageRating (Math.round(x*10)/10 or null), monthly = 12 buckets from new Date(y, m-11, 1) up to the current month {key, short, label, count}, distribution stars 5→1.\n- src/lib/stats.test.ts: demo numbers (12/3/2/7, 2,210, 4.3, 3/3/1/0/0), 12 buckets with the current month last, 'Sep 2026: 1 book' pluralisation, and the empty library.\n- components/stats/stat-card.tsx: <section aria-labelledby> (region named exactly by the title), a lucide icon (§5.7 list) and <p data-testid='stat-value'>.\n- components/stats/monthly-chart.tsx: region 'Finished per month' with 'Last 12 months'.\n  - An <ol> of 12 <li>, each with a bar <div role='img' aria-label='{Mon YYYY}: N book(s)'>.\n  - Height is count/max% via inline style; 0 renders as an h-1 bg-input stub. The count label is aria-hidden and omitted for 0.\n  - Month labels are aria-hidden: a single letter below sm, 'Sep' at sm+. The current month is emphasised.\n  - Must fit 343px with no overflow.\n- components/stats/rating-distribution.tsx: region 'Rating distribution', a <ul> of 5 <li aria-label='5 stars: 3'> with the label, a proportional bar and the count.\n- components/stats/stats-skeleton.tsx: 8 cells (the GoalCard slot included), a chart with fixed bar heights [40,65,30,80,55,20,70,45,60,35,75,50]%, and 5 distribution rows.\n- src/app/stats/page.tsx (force-dynamic, metadata 'Stats'):\n  - Page header h1 'Stats' + 'Your reading at a glance.'\n  - total===0 → EmptyState 'No stats yet', 'Add a few books and your stats will show up here.', primary link 'Add a book' → /books/new (BarChart3 icon).\n  - Otherwise: a grid of 7 StatCards (grid-cols-2 md:grid-cols-4) in the §5.4 order, leaving the 8th cell for T7's GoalCard; then the charts row (lg 2fr/1fr).\n  - src/app/stats/loading.tsx → StatsSkeleton.\n\nDone when: unit tests pass and AC-17, AC-18, AC-20 (12 bars, current month last) and AC-21 pass (reset hook 'empty'), with no horizontal scroll at 375px.",
+      "depends_on": ["T1"],
+      "files": [
+        "src/lib/stats.ts",
+        "src/lib/stats.test.ts",
+        "src/app/stats/page.tsx",
+        "src/app/stats/loading.tsx",
+        "src/components/stats/stat-card.tsx",
+        "src/components/stats/monthly-chart.tsx",
+        "src/components/stats/rating-distribution.tsx",
+        "src/components/stats/stats-skeleton.tsx"
+      ],
+      "acs": ["AC-17", "AC-18", "AC-20", "AC-21"],
+      "size": "M"
+    },
+    {
+      "id": "T7",
+      "title": "Yearly reading goal on Stats",
+      "description": "Covers F11. See ARCHITECTURE D12, §6.2 (setReadingGoal, clearReadingGoal), §6.4 GoalDialog, §7 'goal' rows, and DESIGN §6.5 GoalCard and Goal dialog.\n\nBuild:\n- src/app/stats/actions.ts ('use server'):\n  - setReadingGoal({target}) validates with goalSchema. Invalid → {ok:false, error, fieldErrors:{target:'Enter a whole number from 1 to 999'}}. Otherwise upsert AppSettings{id:'app'} with goalYear=now.getFullYear() and goalTarget.\n  - clearReadingGoal() nulls both fields.\n  - Both revalidatePath('/', 'layout').\n- components/stats/goal-card.tsx (server): region 'Reading goal {year}' in the same surface/min-h-32 as the stat cards, with a Target icon.\n  - No goal: 'No goal set yet' + outline sm 'Set goal'.\n  - Goal set: a single text node '{n} of {goal} book(s)' (pluralize), then a hand-rolled progressbar <div role='progressbar' aria-label='Reading goal progress' aria-valuemin=0 aria-valuenow={finishedThisYear} aria-valuemax={goal}>, visually capped at 100%, then 'Edit goal'.\n  - Embeds GoalDialog.\n- components/stats/goal-dialog.tsx ('use client'): Dialog titled 'Reading goal {year}', description 'How many books do you want to finish this year?'.\n  - Input with the visible label 'Books this year' (inputMode numeric), and the inline error 'Enter a whole number from 1 to 999' with aria-invalid.\n  - Buttons 'Remove goal' (ghost destructive, only when a goal exists), 'Cancel', 'Save goal' (primary, 'Saving…' when pending).\n  - Toasts 'Goal saved' / 'Goal removed', then the dialog closes.\n- Wire the GoalCard into src/app/stats/page.tsx as the 8th grid cell (after the 7 stat cards in the DOM) using getReadingGoal(now).\n\nAlso verify the cross-feature stats flows (library quick status from T2 + stats from T6):\n- AC-19: finishing Piranesi raises Finished and Finished this year by 1.\n- AC-20 increment: the current-month bar grows by 1.\n\nDone when: AC-35, AC-19 and AC-20 pass. Values 0, 1000, '2.5' and '' show the error; the goal is editable and removable.",
+      "depends_on": ["T6", "T2"],
+      "files": [
+        "src/app/stats/actions.ts",
+        "src/app/stats/page.tsx",
+        "src/components/stats/goal-card.tsx",
+        "src/components/stats/goal-dialog.tsx"
+      ],
+      "acs": ["AC-35", "AC-19", "AC-20"],
+      "size": "S"
+    },
+    {
+      "id": "T8",
+      "title": "Settings: theme choice, restore demo data, delete all books",
+      "description": "Covers F9 (and the Settings half of F10). See ARCHITECTURE D10, D11, §5.5, §6.2 (restoreDemoData, deleteAllBooks), §7 'Settings' rows, and DESIGN §6.6.\n\nBuild:\n- src/app/settings/actions.ts ('use server'):\n  - restoreDemoData() → replaceWithDemoData(db, new Date()), which also clears the goal; returns {count: 12}.\n  - deleteAllBooks() → removeAllBooks(db), which keeps AppSettings so nothing re-seeds and keeps the goal.\n  - Both use try/catch → ERROR_TOAST, then revalidatePath('/', 'layout').\n- components/settings/theme-choice.tsx ('use client'): shadcn RadioGroup aria-label 'Theme' with tiles 'Light' (Sun), 'Dark' (Moon) and 'System' (Monitor), bound to next-themes `theme`. Disabled until mounted but not dimmed (data-[disabled]:opacity-100). Tile classes per §6.6.\n- components/settings/data-actions.tsx ('use client'), using the T1 ConfirmDialog:\n  - Row 'Demo shelf': outline 'Restore demo data' (RotateCcw) → alertdialog 'Restore demo data?' with description 'This replaces all your books with the 12 demo books and clears your reading goal.' and buttons Cancel / 'Restore' (primary) → toast.success('Demo data restored').\n  - Row 'Start fresh': danger-trigger 'Delete all books' (Trash2) → alertdialog 'Delete all books?' with description \"This permanently removes every book on your shelf. It can't be undone.\" and buttons Cancel / 'Delete all' (destructive) → toast.success('All books deleted').\n  - The dialog stays open with a spinner until the action resolves. Errors → ERROR_TOAST.\n- src/app/settings/page.tsx (static, metadata 'Settings', max-w-2xl): h1 'Settings' + 'Appearance and your data.', an 'Appearance' surface ('Choose how Shelfwise looks on this device.') and a 'Your data' surface with divide-y rows. Row titles must NOT equal the button names.\n\nDone when: AC-31 and AC-32 pass through the UI (then '/' shows 'Your shelf is empty' or 12 cards incl. 'The Hobbit'). The Theme radios reflect and change the theme, consistent with the header 'Toggle theme'.",
+      "depends_on": ["T2"],
+      "files": [
+        "src/app/settings/page.tsx",
+        "src/app/settings/actions.ts",
+        "src/components/settings/theme-choice.tsx",
+        "src/components/settings/data-actions.tsx"
+      ],
+      "acs": ["AC-31", "AC-32"],
+      "size": "S"
+    },
+    {
+      "id": "T9",
+      "title": "Delete book with confirmation and Undo",
+      "description": "Covers F7. See ARCHITECTURE D11, §6 (deleteBook does NOT revalidate), §6.1 (deleteBook, restoreBook), §6.4 DeleteBookButton, and DESIGN §5.2 (danger trigger), §5.10 (6000ms toast with action), §5.11, §6.4 'Delete dialog'.\n\nBuild:\n- src/app/books/delete-actions.ts ('use server'):\n  - deleteBook({id}): purgeSoftDeleted(db, now − 10 min), then set deletedAt=now on a non-deleted row (else 'Book not found'). Return {id, title}. Do NOT call revalidatePath; otherwise the detail route re-renders into 'Book not found' before navigation.\n  - restoreBook({id}): requires a soft-deleted row, sets deletedAt=null, then revalidatePath('/', 'layout'). Every other field is untouched, so the restore is exact.\n- components/books/delete-book-button.tsx ('use client'), props {bookId, title}. An outline danger 'Delete' button (Trash2, flex-1 sm:flex-none) inside the T1 ConfirmDialog.\n  - Dialog: title `Delete \"{title}\"?`, description 'It will be removed from your library. You can undo this right after.', confirm 'Delete' (destructive).\n  - On ok: router.push('/'), then toast('Book deleted', {duration: 6000, action: {label: 'Undo', onClick}}).\n  - Undo → restoreBook → toast.success('Book restored') + router.refresh(); failure → ERROR_TOAST.\n- Add <DeleteBookButton> next to 'Edit' in the action row of src/app/books/[id]/page.tsx.\n\nEdge cases:\n- The toast must survive the client navigation to '/'. Sonner's Toaster lives in the root layout, so call the toast after push.\n- The '/' list and every count exclude soft-deleted rows (listBooks already filters them).\n\nDone when: AC-25, AC-26 and AC-27 pass (after Undo, the 'Educated' card shows select 'finished' and img 'Rated 3 out of 5').",
+      "depends_on": ["T5"],
+      "files": [
+        "src/app/books/delete-actions.ts",
+        "src/components/books/delete-book-button.tsx",
+        "src/app/books/[id]/page.tsx"
+      ],
+      "acs": ["AC-25", "AC-26", "AC-27"],
+      "size": "S"
+    },
+    {
+      "id": "T10",
+      "title": "Integration and polish",
+      "description": "Final pass across the whole app against DESIGN.md §9 (reviewer checklist) and ARCHITECTURE §7 (accessible-name contract).\n\nCheck and fix:\n1. Nav and cross-links:\n   - Header nav aria-current: 'Library' only on '/'; book pages activate nothing.\n   - Card title → detail → 'Back to library'; Edit ↔ Cancel; empty-state links ('Add your first book', 'Add a book', 'View all books').\n   - There is exactly one 'Add book' link per page.\n2. Seed data covering every screen:\n   - With a fresh DB (delete dev.db, `npm run dev`), the first request seeds 12 demo books.\n   - Every screen has realistic content: the Want/Reading/Finished tabs, a rated finished book, a want book without rating, notes present and absent, and 7 non-zero chart bars with the current month last.\n3. States:\n   - Loading skeletons exist for library, detail, edit and stats, with the same chrome as the real content.\n   - Error boundary 'Something went wrong' / 'Try again'.\n   - Not-found for unknown paths and ids.\n   - All empty states follow DESIGN §5.8, with the icon, one line and one action.\n4. Responsive at 375px and 390px (AC-34):\n   - No document-level horizontal scroll on /, /?status=want, /books/new, /books/demo-the-hobbit, /stats and /settings.\n   - Nav text links stay visible; only the tab row scrolls internally.\n   - Touch targets are ≥44px below sm; forms and dialogs stack their buttons.\n5. Dark mode:\n   - Warm charcoal, never pure black; covers keep their tones; native selects follow color-scheme.\n   - Focus rings are visible in both themes; there is no hydration mismatch in the theme toggle or Theme radios.\n6. Metadata: every page title uses '%s · Shelfwise'. Every page that reads the DB exports dynamic='force-dynamic'.\n7. Run commands.json lint, typecheck, test, build and the full e2e suite (npm run db:reset first). Fix any regressions in the owning files.\n\nDo not touch package.json, lockfiles, tests/, docs/pipeline/ or prisma/schema.prisma.\n\nDone when: all checks are green and every AC in spec.json passes, in particular AC-33 and AC-34.",
+      "depends_on": ["T1", "T2", "T3", "T4", "T5", "T6", "T7", "T8", "T9"],
+      "files": [
+        "src/app/**",
+        "src/components/**",
+        "src/lib/**",
+        "prisma/seed.ts"
+      ],
+      "acs": ["AC-33", "AC-34"],
+      "size": "M"
+    }
+  ]
+}
