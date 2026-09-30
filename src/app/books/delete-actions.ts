@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { ERROR_TOAST } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { ensureInitialized, purgeSoftDeleted } from "@/lib/data/maintenance";
+import { deleteBookFiles } from "@/lib/file-storage";
 import type { ActionResult } from "@/lib/types";
 import { idSchema } from "@/lib/validation";
 
@@ -22,7 +23,8 @@ export async function deleteBook(input: { id: string }): Promise<ActionResult<{ 
   try {
     await ensureInitialized(db);
     const now = new Date();
-    await purgeSoftDeleted(db, new Date(now.getTime() - UNDO_WINDOW_MS));
+    const purged = await purgeSoftDeleted(db, new Date(now.getTime() - UNDO_WINDOW_MS));
+    await Promise.all(purged.map((purgedId) => deleteBookFiles(purgedId)));
     const book = await db.book.findFirst({ where: { id, deletedAt: null } });
     if (!book) return { ok: false, error: NOT_FOUND };
     await db.book.update({ where: { id }, data: { deletedAt: now } });

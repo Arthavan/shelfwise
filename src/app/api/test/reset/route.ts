@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 
 import { db } from "@/lib/db";
 import { removeAllBooks, replaceWithDemoData } from "@/lib/data/maintenance";
+import { deleteAllBookFiles } from "@/lib/file-storage";
 import { resetSchema } from "@/lib/validation";
 import { isSameOrigin } from "@/lib/request-guard";
 
@@ -49,8 +50,10 @@ export async function POST(request: Request) {
   try {
     if (mode === "demo") {
       await replaceWithDemoData(db, new Date());
+      await deleteAllBookFiles();
     } else {
       await removeAllBooks(db);
+      await deleteAllBookFiles();
       // Keep the AppSettings row (the "initialized" marker) so nothing re-seeds; just clear the goal.
       await db.appSettings.upsert({
         where: { id: "app" },

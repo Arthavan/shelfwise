@@ -25,8 +25,12 @@ export async function removeAllBooks(db: PrismaClient) {
   await db.book.deleteMany({});
 }
 
-export async function purgeSoftDeleted(db: PrismaClient, before: Date) {
-  await db.book.deleteMany({ where: { deletedAt: { lt: before } } });
+/** Hard-deletes books soft-deleted before `before`; returns their ids so callers can remove stored files. */
+export async function purgeSoftDeleted(db: PrismaClient, before: Date): Promise<string[]> {
+  const rows = await db.book.findMany({ where: { deletedAt: { lt: before } }, select: { id: true } });
+  const ids = rows.map((r) => r.id);
+  if (ids.length > 0) await db.book.deleteMany({ where: { id: { in: ids } } });
+  return ids;
 }
 
 /** Clients that already passed the first-run check in this process (a WeakSet so tests get a fresh state per client). */
