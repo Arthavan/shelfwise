@@ -5,9 +5,17 @@ import { revalidatePath } from "next/cache";
 import { ERROR_TOAST } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { ensureInitialized } from "@/lib/data/maintenance";
-import { addBookmark, removeBookmark, saveProgress, startReading } from "@/lib/data/reading";
-import type { ActionResult, BookmarkInfo, ProgressInfo } from "@/lib/types";
-import { bookmarkRemoveSchema, bookmarkSchema, idSchema, progressSchema } from "@/lib/validation";
+import { addBookmark, addHighlight, removeBookmark, removeHighlight, saveProgress, startReading, updateHighlight } from "@/lib/data/reading";
+import type { ActionResult, BookmarkInfo, HighlightInfo, ProgressInfo } from "@/lib/types";
+import {
+  bookmarkRemoveSchema,
+  bookmarkSchema,
+  highlightAddSchema,
+  highlightRemoveSchema,
+  highlightUpdateSchema,
+  idSchema,
+  progressSchema,
+} from "@/lib/validation";
 
 /** Runs once when the reader opens: stamps lastReadAt and moves a Want to read book to Reading. */
 export async function startReadingAction(input: { id: string }): Promise<ActionResult> {
@@ -62,6 +70,53 @@ export async function removeBookmarkAction(input: { id: string; bookmarkId: stri
   try {
     await ensureInitialized(db);
     await removeBookmark(db, parsed.data.id, parsed.data.bookmarkId);
+    return { ok: true, data: null };
+  } catch {
+    return { ok: false, error: ERROR_TOAST };
+  }
+}
+
+export async function addHighlightAction(input: {
+  id: string;
+  page: number | null;
+  rects: { x: number; y: number; w: number; h: number }[];
+  text: string;
+  color: string;
+}): Promise<ActionResult<HighlightInfo>> {
+  const parsed = highlightAddSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: ERROR_TOAST };
+  try {
+    await ensureInitialized(db);
+    const { id, page, rects, text, color } = parsed.data;
+    const highlight = await addHighlight(db, id, { page, rects, cfiRange: null, text, color });
+    return { ok: true, data: highlight };
+  } catch {
+    return { ok: false, error: ERROR_TOAST };
+  }
+}
+
+export async function updateHighlightAction(input: { id: string; highlightId: string; note?: string | null; color?: string }): Promise<ActionResult> {
+  const parsed = highlightUpdateSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: ERROR_TOAST };
+  try {
+    await ensureInitialized(db);
+    const { id, highlightId, note, color } = parsed.data;
+    await updateHighlight(db, id, highlightId, {
+      ...(note !== undefined ? { note: note === null || note === "" ? null : note } : {}),
+      ...(color !== undefined ? { color } : {}),
+    });
+    return { ok: true, data: null };
+  } catch {
+    return { ok: false, error: ERROR_TOAST };
+  }
+}
+
+export async function removeHighlightAction(input: { id: string; highlightId: string }): Promise<ActionResult> {
+  const parsed = highlightRemoveSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: ERROR_TOAST };
+  try {
+    await ensureInitialized(db);
+    await removeHighlight(db, parsed.data.id, parsed.data.highlightId);
     return { ok: true, data: null };
   } catch {
     return { ok: false, error: ERROR_TOAST };

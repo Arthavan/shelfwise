@@ -5,7 +5,15 @@ import { ArrowLeft, CircleCheck } from "lucide-react";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import { toast } from "sonner";
 
-import { addBookmarkAction, removeBookmarkAction, saveProgressAction, startReadingAction } from "@/app/books/[id]/read/actions";
+import {
+  addBookmarkAction,
+  addHighlightAction,
+  removeBookmarkAction,
+  removeHighlightAction,
+  saveProgressAction,
+  startReadingAction,
+  updateHighlightAction,
+} from "@/app/books/[id]/read/actions";
 import { updateBookStatus } from "@/app/books/status-actions";
 import { pdfOutlineToItems, type OutlineItem } from "@/components/reader/outline";
 import { getAllPageTexts } from "@/components/reader/page-text";
@@ -13,12 +21,14 @@ import { PdfPage } from "@/components/reader/pdf-page";
 import { loadPdf } from "@/components/reader/pdf-loader";
 import { ReaderToolbar } from "@/components/reader/reader-toolbar";
 import { SEARCH_INPUT_ID, SearchPanel } from "@/components/reader/search-panel";
+import { selectionToHighlight } from "@/components/reader/selection";
+import { SelectionPopover } from "@/components/reader/selection-popover";
 import { SidePanel, type PanelTab } from "@/components/reader/side-panel";
 import type { ReaderData } from "@/components/reader/types";
 import { useProgressSaver, type ProgressPayload } from "@/components/reader/use-progress-saver";
 import { Button } from "@/components/ui/button";
 import { ERROR_TOAST, STATUS_TOASTS } from "@/lib/constants";
-import { clampPage, clampZoom, percentFor, searchPages, wrapIndex, type PageTheme, type ViewMode } from "@/lib/reading";
+import { clampPage, clampZoom, percentFor, searchPages, wrapIndex, type HighlightColor, type PageTheme, type Rect, type ViewMode } from "@/lib/reading";
 import type { SearchHit } from "@/lib/reading";
 import type { BookmarkInfo, BookStatus, HighlightInfo } from "@/lib/types";
 
@@ -89,8 +99,8 @@ export function PdfReader({ data }: { data: ReaderData }) {
   const [panelOpen, setPanelOpen] = useState(false);
   const [panelTab, setPanelTab] = useState<PanelTab>("contents");
   const [outline, setOutline] = useState<OutlineItem[]>([]);
-  // Held now; highlights are wired up in Task 9.
-  const [highlights] = useState<HighlightInfo[]>(data.highlights);
+  const [highlights, setHighlights] = useState<HighlightInfo[]>(data.highlights);
+  const [pending, setPending] = useState<{ page: number; rects: Rect[]; text: string; anchor: { x: number; y: number } } | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
@@ -160,7 +170,7 @@ export function PdfReader({ data }: { data: ReaderData }) {
 
   // Search: extract every page's text once, on first open (cached per document).
   useEffect(() => {
-    if (!pdf || !searchOpen || pageTexts) return;
+    if (!pdf || !(searchOpen || (panelOpen && panelTab === "highlights")) || pageTexts) return;
     let cancelled = false;
     getAllPageTexts(pdf, (done, total) => {
       if (!cancelled) setSearchProgress({ done, total });
@@ -176,7 +186,7 @@ export function PdfReader({ data }: { data: ReaderData }) {
     return () => {
       cancelled = true;
     };
-  }, [pdf, searchOpen, pageTexts]);
+  }, [pdf, searchOpen, panelOpen, panelTab, pageTexts]);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQuery(query), 200);
@@ -399,6 +409,99 @@ export function PdfReader({ data }: { data: ReaderData }) {
     [bookId, bookmarks],
   );
 
+  // Selection -> highlight popover. Only the page holding the start of the selection counts; on it, the
+  // rects whose centre lies inside the page box are used (a selection spanning pages keeps its first page).
+  const onSelectionEnd = useCallback(() => {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed || noText) {
+      setPending(null);
+      return;
+    }
+    const range = sel.getRangeAt(0);
+    const startEl = range.startContainer instanceof Element ? range.startContainer : range.startContainer.parentElement;
+    const pageEl = startEl?.closest<HTMLElement>("[data-page]");
+    if (!pageEl) {
+      setPending(null);
+      return;
+    }
+    const box = pageEl.getBoundingClientRect();
+    const rects = [...range.getClientRects()].filter((r) => {
+      const cx = r.left + r.width / 2;
+      const cy = r.top + r.height / 2;
+      return r.width > 0 && r.height > 0 && cx >= box.left && cx <= box.right && cy >= box.top && cy <= box.bottom;
+    });
+    const h = selectionToHighlight({ text: sel.toString(), rects, box });
+    if (!h) {
+      setPending(null);
+      return;
+    }
+    const first = rects[0];
+    setPending({ page: Number(pageEl.dataset.page), rects: h.rects, text: h.text, anchor: { x: first.left + first.width / 2, y: first.top } });
+  }, [noText]);
+
+  // Shift+arrow selection: re-read the selection after the keys that can extend it.
+  useEffect(() => {
+    function onKeyUp(e: KeyboardEvent) {
+      if (isTypingTarget(e.target) || !e.key.startsWith("Arrow") && e.key !== "Shift" && e.key !== "Home" && e.key !== "End") return;
+      if (window.getSelection()?.isCollapsed === false) onSelectionEnd();
+    }
+    window.addEventListener("keyup", onKeyUp);
+    return () => window.removeEventListener("keyup", onKeyUp);
+  }, [onSelectionEnd]);
+
+  const closePopover = useCallback(() => setPending(null), []);
+
+  const createHighlight = useCallback(
+    async (color: HighlightColor, note: string) => {
+      if (!pending) return;
+      const p = pending;
+      setPending(null);
+      const res = await addHighlightAction({ id: bookId, page: p.page, rects: p.rects, text: p.text, color });
+      if (!res.ok) {
+        toast.error(ERROR_TOAST);
+        return;
+      }
+      window.getSelection()?.removeAllRanges();
+      const trimmed = note.trim();
+      setHighlights((prev) => [...prev, { ...res.data, note: trimmed || null }]);
+      if (trimmed) {
+        const upd = await updateHighlightAction({ id: bookId, highlightId: res.data.id, note: trimmed });
+        if (!upd.ok) {
+          setHighlights((prev) => prev.map((h) => (h.id === res.data.id ? { ...h, note: null } : h)));
+          toast.error(ERROR_TOAST);
+        }
+      }
+    },
+    [bookId, pending],
+  );
+
+  const updateHighlight = useCallback(
+    async (highlightId: string, patch: { note?: string | null; color?: string }) => {
+      const before = highlights.find((h) => h.id === highlightId);
+      if (!before) return;
+      setHighlights((prev) => prev.map((h) => (h.id === highlightId ? { ...h, ...patch } : h)));
+      const res = await updateHighlightAction({ id: bookId, highlightId, ...patch });
+      if (!res.ok) {
+        setHighlights((prev) => prev.map((h) => (h.id === highlightId ? before : h)));
+        toast.error(ERROR_TOAST);
+      }
+    },
+    [bookId, highlights],
+  );
+
+  const removeHighlight = useCallback(
+    async (highlightId: string) => {
+      const removed = highlights.find((h) => h.id === highlightId);
+      setHighlights((prev) => prev.filter((h) => h.id !== highlightId));
+      const res = await removeHighlightAction({ id: bookId, highlightId });
+      if (!res.ok) {
+        if (removed) setHighlights((prev) => [...prev, removed]);
+        toast.error(ERROR_TOAST);
+      }
+    },
+    [bookId, highlights],
+  );
+
   const togglePanel = useCallback(() => setPanelOpen((o) => !o), []);
 
   async function markFinished() {
@@ -471,7 +574,7 @@ export function PdfReader({ data }: { data: ReaderData }) {
         />
       ) : null}
       <div className="flex min-h-0 flex-1">
-      <div ref={containerRef} className="min-h-0 min-w-0 flex-1 overflow-auto bg-muted/60 px-4 py-6">
+      <div ref={containerRef} onMouseUp={onSelectionEnd} className="min-h-0 min-w-0 flex-1 overflow-auto bg-muted/60 px-4 py-6">
         {!pdf ? (
           <p className="text-center text-sm text-muted-foreground">Opening…</p>
         ) : viewMode === "page" ? (
@@ -496,10 +599,21 @@ export function PdfReader({ data }: { data: ReaderData }) {
           currentPage={page}
           onGoToPage={goTo}
           onRemoveBookmark={(id) => void removeBookmark(id)}
+          onUpdateHighlight={(id, patch) => void updateHighlight(id, patch)}
+          onRemoveHighlight={(id) => void removeHighlight(id)}
+          noText={noText}
           onClose={() => setPanelOpen(false)}
         />
       ) : null}
       </div>
+      {pending ? (
+        <SelectionPopover
+          anchor={pending.anchor}
+          onPick={(c) => void createHighlight(c, "")}
+          onSaveNote={(c, note) => void createHighlight(c, note)}
+          onClose={closePopover}
+        />
+      ) : null}
       {showFinish ? (
         <div className="flex items-center justify-center gap-3 border-t bg-background px-4 py-3">
           <p className="text-sm text-muted-foreground">You&apos;ve reached the last page.</p>

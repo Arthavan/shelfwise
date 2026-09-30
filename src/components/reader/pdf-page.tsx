@@ -7,7 +7,7 @@ import { loadPdfjs } from "@/components/reader/pdf-loader";
 import type { HighlightInfo } from "@/lib/types";
 import type { PageTheme } from "@/lib/reading";
 
-const HIGHLIGHT_BG: Record<string, string> = {
+export const HIGHLIGHT_BG: Record<string, string> = {
   yellow: "rgba(250, 204, 21, 0.4)",
   green: "rgba(74, 222, 128, 0.4)",
   blue: "rgba(96, 165, 250, 0.4)",
