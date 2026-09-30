@@ -1,0 +1,51 @@
+{
+  "score": 8.5,
+  "issues": [
+    {
+      "id": "V1",
+      "severity": "minor",
+      "route": "/settings",
+      "viewport": "desktop",
+      "theme": "light",
+      "problem": "The Settings section titles 'Appearance' and 'Your data' render in Inter 16px semibold. Every other section title in the app ('Details', 'Notes', 'Finished per month', 'Rating distribution') uses Newsreader serif at 20px, so Settings looks like it comes from a different product. This shows in all four viewport/theme combinations.",
+      "fix": "src/app/settings/page.tsx: on both h2 elements (#appearance-heading, #data-heading), replace className \"text-base font-semibold\" with the DESIGN §3 h2 classes \"font-serif text-xl font-medium\"."
+    },
+    {
+      "id": "V2",
+      "severity": "minor",
+      "route": "/books/new",
+      "viewport": "desktop",
+      "theme": "light",
+      "problem": "On Add and Edit at sm+, the Status select (36px, h-9) and the Pages input (40px, h-10) sit side by side in one row with different heights. Their top and bottom edges don't line up (select 402–438, input 401–441), which is visible along the row. The same happens on /books/demo-circe/edit in both themes.",
+      "fix": "src/components/books/book-form.tsx: give the form's Status <NativeSelect> className \"sm:h-10\" so it matches Input (h-11 sm:h-10). native-select.tsx already merges className through cn(). Leave the h-9 default for the card and toolbar selects."
+    },
+    {
+      "id": "V3",
+      "severity": "minor",
+      "route": "/",
+      "viewport": "desktop",
+      "theme": "light",
+      "problem": "Main has no 64px bottom padding at sm+. The class list 'py-6 pb-16 sm:py-8' lets sm:py-8 override pb-16, so the last row of book cards (and the bottom of long pages) ends only 32px above the viewport edge. The shelf feels cut off instead of resting.",
+      "fix": "src/app/layout.tsx <main id=\"main\">: replace \"py-6 pb-16 sm:py-8\" with \"pt-6 pb-16 sm:pt-8\"."
+    },
+    {
+      "id": "V4",
+      "severity": "minor",
+      "route": "/",
+      "viewport": "desktop",
+      "theme": "light",
+      "problem": "The label of the first status tab ('All · 12') starts 12px to the right of the page's left edge (x=252 against 240 for the h1, the description, the search box and the cards). Everything else on the page shares one left edge, so the tab row looks slightly indented.",
+      "fix": "src/components/books/status-tabs.tsx: on the first tab only, use pl-0 and after:left-0 (keep after:right-3) so its label and underline start at the container edge. The alternative is -ml-3 on the tablist with the border-b moved to the scroll wrapper."
+    },
+    {
+      "id": "V5",
+      "severity": "minor",
+      "route": "/",
+      "viewport": "desktop",
+      "theme": "light",
+      "problem": "The demo shelf looks mostly brown and green. coverTone() puts 3 of 12 demo books on ochre (The Overstory, Project Hail Mary, Circe), 3 on forest (Dune, The Remains of the Day, A Wizard of Earthsea) and 2 on walnut. No book gets navy (cover-3), and ochre appears in the same column in rows 1–3. DESIGN §1 asks for a varied 'real shelf' of the 8 cloth tones.",
+      "fix": "src/lib/cover.ts coverTone(): mix the hash better before the modulo, e.g. hash ^= hash >>> 16; hash = Math.imul(hash, 0x45d9f3b) >>> 0; return (hash % 8) + 1. Check that the 12 demo titles spread over at least 7 tones, and update any pinned tone in cover.test.ts."
+    }
+  ],
+  "notes": "I reviewed all 40 captures: 10 routes at 1440x900 and 390x844, light and dark. /api/test/reset is a POST-only JSON hook, so a GET correctly returns a blank 405 page; it is not a UI screen and is not graded. The rest is strong and matches DESIGN.md closely. The warm paper and charcoal themes are consistent. Serif is used for titles only. The terracotta accent appears only on primary actions, selection, stars and chart bars. Focus rings are visible (Title autofocus on /books/new). Nothing overflows horizontally at 390px; the status tabs scroll inside their own row as specified. Mobile touch targets are 44px, and forms stack with the primary action on top. The 404 and book-not-found states are finished and centered. The stats grid and chart hold up at 390px with single-letter months. There are no blockers or major issues. Fixing V1–V3 (a few minutes each) would put this at 9+."
+}
