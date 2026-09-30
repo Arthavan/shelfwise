@@ -1,7 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
-import { ArrowLeft, CircleCheck } from "lucide-react";
+import { CircleCheck } from "lucide-react";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import { toast } from "sonner";
 
@@ -18,6 +17,7 @@ import { updateBookStatus } from "@/app/books/status-actions";
 import { pdfOutlineToItems, type OutlineItem } from "@/components/reader/outline";
 import { getAllPageTexts } from "@/components/reader/page-text";
 import { PdfPage } from "@/components/reader/pdf-page";
+import { isTypingTarget, ReaderOpenError, toggleFullscreen } from "@/components/reader/reader-common";
 import { loadPdf } from "@/components/reader/pdf-loader";
 import { ReaderToolbar } from "@/components/reader/reader-toolbar";
 import { SEARCH_INPUT_ID, SearchPanel } from "@/components/reader/search-panel";
@@ -33,12 +33,6 @@ import type { SearchHit } from "@/lib/reading";
 import type { BookmarkInfo, BookStatus, HighlightInfo } from "@/lib/types";
 
 const DEFAULT_ZOOM = 1.25;
-const OPEN_ERROR = "Shelfwise couldn't open this file. It may be damaged or password-protected.";
-
-function isTypingTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
-}
 
 /** Scroll-mode placeholder: reserves the estimated height and mounts the page once near the viewport. */
 function LazyPage({
@@ -366,11 +360,6 @@ export function PdfReader({ data }: { data: ReaderData }) {
     [page],
   );
 
-  const toggleFullscreen = useCallback(() => {
-    if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
-    else void document.documentElement.requestFullscreen().catch(() => {});
-  }, []);
-
   const toggleSearch = useCallback(() => {
     if (searchOpen) closeSearch();
     else openSearch();
@@ -514,22 +503,7 @@ export function PdfReader({ data }: { data: ReaderData }) {
     }
   }
 
-  if (error) {
-    return (
-      <div className="flex flex-1 items-center justify-center p-6">
-        <div role="alert" className="max-w-md space-y-4 text-center">
-          <p className="text-base">{OPEN_ERROR}</p>
-          <p className="text-sm text-muted-foreground">You can replace the file from the book page.</p>
-          <Button asChild variant="outline">
-            <Link href={backHref}>
-              <ArrowLeft aria-hidden="true" />
-              Back to book
-            </Link>
-          </Button>
-        </div>
-      </div>
-    );
-  }
+  if (error) return <ReaderOpenError backHref={backHref} />;
 
   const pageHighlights = (n: number) => highlights.filter((h) => h.page === n);
   const bookmarked = currentBookmark !== undefined;

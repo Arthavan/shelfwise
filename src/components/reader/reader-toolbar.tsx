@@ -2,6 +2,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import {
+  AArrowDown,
+  AArrowUp,
   ArrowLeft,
   Bookmark,
   BookmarkCheck,
@@ -19,13 +21,10 @@ import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/native-select";
 import { ZOOM_MAX, ZOOM_MIN, type PageTheme, type ViewMode } from "@/lib/reading";
 
-interface ReaderToolbarProps {
-  page: number;
-  pageCount: number | null;
-  onPage: (n: number) => void;
+interface CommonToolbarProps {
+  /** PDF: zoom factor. EPUB: text size factor (1 = 100%). */
   zoom: number;
   onZoom: (z: number) => void;
-  fitWidth: () => void;
   viewMode: ViewMode;
   onViewMode: (m: ViewMode) => void;
   theme: PageTheme;
@@ -40,6 +39,29 @@ interface ReaderToolbarProps {
   onBack?: () => void;
   title: string;
 }
+
+/** PDF: page field, "of N", zoom and Fit width. */
+interface PdfToolbarProps extends CommonToolbarProps {
+  variant?: "pdf";
+  page: number;
+  pageCount: number | null;
+  onPage: (n: number) => void;
+  fitWidth: () => void;
+}
+
+/** EPUB: prev/next, a percent readout and text size (no page numbers, no zoom). */
+interface EpubToolbarProps extends CommonToolbarProps {
+  variant: "epub";
+  /** Percent through the book, or null while the locations are still being computed. */
+  percent: number | null;
+  ready: boolean;
+  atStart: boolean;
+  atEnd: boolean;
+  onPrev: () => void;
+  onNext: () => void;
+}
+
+type ReaderToolbarProps = PdfToolbarProps | EpubToolbarProps;
 
 const ZOOM_STEP = 0.25;
 
@@ -72,20 +94,11 @@ function PageInput({ page, pageCount, onPage }: { page: number; pageCount: numbe
   );
 }
 
-export function ReaderToolbar(props: ReaderToolbarProps) {
-  const { page, pageCount, onPage, zoom, onZoom, viewMode, theme, bookmarked } = props;
-  const round = (z: number) => Math.round(z * 100) / 100;
-  return (
-    <div className="flex flex-wrap items-center gap-2 border-b bg-background px-3 py-2">
-      <Button asChild variant="ghost" size="icon-sm">
-        <Link href={props.backHref} aria-label="Back to book" onClick={props.onBack}>
-          <ArrowLeft aria-hidden="true" />
-        </Link>
-      </Button>
-      <p className="min-w-0 max-w-[40ch] flex-1 truncate font-serif text-sm font-medium" title={props.title}>
-        {props.title}
-      </p>
+const round = (z: number) => Math.round(z * 100) / 100;
 
+function PdfControls({ page, pageCount, onPage, zoom, onZoom, fitWidth }: PdfToolbarProps) {
+  return (
+    <>
       <div className="flex items-center gap-1">
         <Button variant="ghost" size="icon-sm" aria-label="Previous page" disabled={pageCount === null || page <= 1} onClick={() => onPage(page - 1)}>
           <ChevronLeft aria-hidden="true" />
@@ -107,11 +120,61 @@ export function ReaderToolbar(props: ReaderToolbarProps) {
         <Button variant="ghost" size="icon-sm" aria-label="Zoom in" disabled={zoom >= ZOOM_MAX} onClick={() => onZoom(round(zoom + ZOOM_STEP))}>
           <ZoomIn aria-hidden="true" />
         </Button>
-        <Button variant="ghost" size="sm" onClick={props.fitWidth}>
+        <Button variant="ghost" size="sm" onClick={fitWidth}>
           <MoveHorizontal aria-hidden="true" />
           Fit width
         </Button>
       </div>
+    </>
+  );
+}
+
+const TEXT_STEP = 0.1;
+
+function EpubControls({ percent, ready, atStart, atEnd, onPrev, onNext, zoom, onZoom }: EpubToolbarProps) {
+  return (
+    <>
+      <div className="flex items-center gap-1">
+        <Button variant="ghost" size="icon-sm" aria-label="Previous page" disabled={!ready || atStart} onClick={onPrev}>
+          <ChevronLeft aria-hidden="true" />
+        </Button>
+        <span data-testid="reader-percent" title="Progress through the book" className="w-12 text-center text-sm text-muted-foreground tabular-nums">
+          {percent === null ? "…" : `${percent}%`}
+        </span>
+        <Button variant="ghost" size="icon-sm" aria-label="Next page" disabled={!ready || atEnd} onClick={onNext}>
+          <ChevronRight aria-hidden="true" />
+        </Button>
+      </div>
+
+      <div className="flex items-center gap-1">
+        <Button variant="ghost" size="icon-sm" aria-label="Smaller text" disabled={zoom <= ZOOM_MIN} onClick={() => onZoom(round(zoom - TEXT_STEP))}>
+          <AArrowDown aria-hidden="true" />
+        </Button>
+        <span className="w-12 text-center text-sm tabular-nums" aria-live="polite">
+          {Math.round(zoom * 100)}%
+        </span>
+        <Button variant="ghost" size="icon-sm" aria-label="Larger text" disabled={zoom >= ZOOM_MAX} onClick={() => onZoom(round(zoom + TEXT_STEP))}>
+          <AArrowUp aria-hidden="true" />
+        </Button>
+      </div>
+    </>
+  );
+}
+
+export function ReaderToolbar(props: ReaderToolbarProps) {
+  const { viewMode, theme, bookmarked } = props;
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-b bg-background px-3 py-2">
+      <Button asChild variant="ghost" size="icon-sm">
+        <Link href={props.backHref} aria-label="Back to book" onClick={props.onBack}>
+          <ArrowLeft aria-hidden="true" />
+        </Link>
+      </Button>
+      <p className="min-w-0 max-w-[40ch] flex-1 truncate font-serif text-sm font-medium" title={props.title}>
+        {props.title}
+      </p>
+
+      {props.variant === "epub" ? <EpubControls {...props} /> : <PdfControls {...props} />}
 
       <NativeSelect aria-label="View mode" value={viewMode} onChange={(e) => props.onViewMode(e.target.value as ViewMode)} wrapperClassName="w-28">
         <option value="page">Page</option>

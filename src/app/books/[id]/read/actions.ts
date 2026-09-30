@@ -80,6 +80,8 @@ export async function addHighlightAction(input: {
   id: string;
   page: number | null;
   rects: { x: number; y: number; w: number; h: number }[];
+  /** EPUB highlights: the CFI range (with page null and no rects). */
+  cfiRange?: string | null;
   text: string;
   color: string;
 }): Promise<ActionResult<HighlightInfo>> {
@@ -87,8 +89,8 @@ export async function addHighlightAction(input: {
   if (!parsed.success) return { ok: false, error: ERROR_TOAST };
   try {
     await ensureInitialized(db);
-    const { id, page, rects, text, color } = parsed.data;
-    const highlight = await addHighlight(db, id, { page, rects, cfiRange: null, text, color });
+    const { id, page, rects, cfiRange, text, color } = parsed.data;
+    const highlight = await addHighlight(db, id, { page, rects, cfiRange: cfiRange ?? null, text, color });
     return { ok: true, data: highlight };
   } catch {
     return { ok: false, error: ERROR_TOAST };

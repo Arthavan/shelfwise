@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import { detectFormat, maxUploadBytes } from "@/lib/upload";
 
+import { makeEpub } from "../../tests/e2e/fixtures/make-epub";
+
 const enc = (s: string) => new TextEncoder().encode(s);
 
 describe("detectFormat", () => {
@@ -11,6 +13,13 @@ describe("detectFormat", () => {
   });
   it("detects an EPUB (zip with the epub mimetype entry)", () => {
     const zip = "PK\x03\x04" + "x".repeat(26) + "mimetypeapplication/epub+zip";
+    expect(detectFormat(enc(zip))).toBe("epub");
+  });
+  it("detects a generated EPUB (the e2e fixture)", () => {
+    expect(detectFormat(new Uint8Array(makeEpub([{ title: "One", body: "Alpha" }])))).toBe("epub");
+  });
+  it("an EPUB whose early bytes contain %PDF- is still an EPUB", () => {
+    const zip = "PK\x03\x04" + "x".repeat(26) + "mimetypeapplication/epub+zip" + "PK\x03\x04" + "x".repeat(26) + "notes.txt%PDF-1.4 inside";
     expect(detectFormat(enc(zip))).toBe("epub");
   });
   it("rejects a plain zip, text and empty input", () => {

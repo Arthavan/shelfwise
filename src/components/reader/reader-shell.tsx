@@ -8,6 +8,11 @@ const PdfReader = dynamic(() => import("@/components/reader/pdf-reader").then((m
   loading: () => <p className="p-6 text-sm text-muted-foreground">Opening…</p>,
 });
 
+const EpubReader = dynamic(() => import("@/components/reader/epub-reader").then((m) => m.EpubReader), {
+  ssr: false,
+  loading: () => <p className="p-6 text-sm text-muted-foreground">Opening…</p>,
+});
+
 export function ReaderShell({ data }: { data: ReaderData }) {
-  return <PdfReader data={data} />;
+  return data.format === "epub" ? <EpubReader data={data} /> : <PdfReader data={data} />;
 }

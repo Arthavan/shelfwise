@@ -17,11 +17,15 @@ interface SearchPanelProps {
   noText: boolean;
   /** True while the typed query has not yet been applied (debounce). */
   pending: boolean;
+  /** Where a hit is, before its snippet ("Page 3" for a PDF, the chapter title for an EPUB). */
+  hitLabel?: (h: SearchHit) => string;
 }
+
+const pageLabel = (h: SearchHit) => `Page ${h.page}`;
 
 export const SEARCH_INPUT_ID = "reader-search-input";
 
-export function SearchPanel({ query, onQuery, hits, current, onPrev, onNext, onPick, onClose, loading, noText, pending }: SearchPanelProps) {
+export function SearchPanel({ query, onQuery, hits, current, onPrev, onNext, onPick, onClose, loading, noText, pending, hitLabel = pageLabel }: SearchPanelProps) {
   const hasQuery = query.trim() !== "";
   let summary = "";
   if (loading) summary = `Searching… ${loading.done} of ${loading.total}`;
@@ -76,7 +80,7 @@ export function SearchPanel({ query, onQuery, hits, current, onPrev, onNext, onP
                 onClick={() => onPick(i)}
                 className={`w-full rounded-md px-2 py-1 text-left text-sm hover:bg-muted ${i === current ? "bg-muted font-medium" : ""}`}
               >
-                Page {h.page}: {h.snippet}
+                {hitLabel(h)}: {h.snippet}
               </button>
             </li>
           ))}
