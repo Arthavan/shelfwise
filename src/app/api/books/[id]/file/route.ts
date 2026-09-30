@@ -7,11 +7,12 @@ import { revalidatePath } from "next/cache";
 import { ERROR_TOAST } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { ensureInitialized } from "@/lib/data/maintenance";
-import { attachFile, getFile, removeFileRow } from "@/lib/data/reading";
-import { deleteBookFiles, resolveStoragePath, saveBookFile } from "@/lib/file-storage";
+import { storeBookFile } from "@/lib/data/book-file";
+import { getFile, removeFileRow } from "@/lib/data/reading";
+import { deleteBookFiles, resolveStoragePath } from "@/lib/file-storage";
 import { parseRange } from "@/lib/http-range";
 import { isSameOrigin } from "@/lib/request-guard";
-import { detectFormat, maxUploadBytes } from "@/lib/upload";
+import { maxUploadBytes } from "@/lib/upload";
 import { idSchema } from "@/lib/validation";
 
 export const dynamic = "force-dynamic";
@@ -91,16 +92,13 @@ async function upload(request: Request, { params }: Ctx): Promise<Response> {
   if (entry.size > limit) return json({ ok: false, error: `File is too large (max ${Math.round(limit / 1048576)} MB)` }, 413);
 
   const data = Buffer.from(await entry.arrayBuffer());
-  const format = detectFormat(data);
-  if (!format) return json({ ok: false, error: "That file isn't a PDF or EPUB" }, 415);
-
-  const pageCountRaw = Number(form.get("pageCount"));
-  const pageCount = format === "pdf" && Number.isInteger(pageCountRaw) && pageCountRaw > 0 && pageCountRaw <= 100_000 ? pageCountRaw : null;
-
-  const storagePath = await saveBookFile(id.data, format, data);
-  await attachFile(db, id.data, { format, originalName: entry.name.slice(0, 200), storagePath, sizeBytes: data.length, pageCount });
+  const pageCountRaw = form.get("pageCount");
+  const stored = await storeBookFile(db, id.data, data, entry.name, pageCountRaw === null ? null : Number(pageCountRaw));
+  if (!stored.ok) {
+    return stored.reason === "not-found" ? json({ ok: false, error: "Book not found" }, 404) : json({ ok: false, error: "That file isn't a PDF or EPUB" }, 415);
+  }
   revalidatePath("/", "layout");
-  return json({ ok: true, format, sizeBytes: data.length }, 200);
+  return json({ ok: true, format: stored.format, sizeBytes: stored.sizeBytes }, 200);
 }
 
 export async function DELETE(request: Request, ctx: Ctx) {

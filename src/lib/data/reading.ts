@@ -12,12 +12,15 @@ function liveBook(db: PrismaClient, bookId: string) {
   return db.book.findFirst({ where: { id: bookId, deletedAt: null } });
 }
 
+/** Attaches a stored file and resets reading data. Returns false (changing nothing) when the book is not live. */
 export async function attachFile(
   db: PrismaClient,
   bookId: string,
   f: { format: FileFormat; originalName: string; storagePath: string; sizeBytes: number; pageCount: number | null },
-): Promise<void> {
-  await db.$transaction(async (tx) => {
+): Promise<boolean> {
+  return db.$transaction(async (tx) => {
+    // Checked inside the transaction: a book deleted meanwhile (e.g. during a download) gets no file.
+    if (!(await tx.book.findFirst({ where: { id: bookId, deletedAt: null }, select: { id: true } }))) return false;
     await tx.bookFile.upsert({ where: { bookId }, create: { bookId, ...f }, update: { ...f, uploadedAt: new Date() } });
     await tx.readingProgress.deleteMany({ where: { bookId } });
     await tx.bookmark.deleteMany({ where: { bookId } });
@@ -28,6 +31,7 @@ export async function attachFile(
       const pages = book.pages == null && f.pageCount ? { pages: f.pageCount } : {};
       await tx.book.update({ where: { id: bookId }, data: { lastReadAt: null, ...pages } });
     }
+    return true;
   });
 }
 

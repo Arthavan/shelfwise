@@ -1,12 +1,14 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { FileUp, Trash2 } from "lucide-react";
+import { FileUp, Link2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { loadPdf } from "@/components/reader/pdf-loader";
 import { ERROR_TOAST } from "@/lib/constants";
 import { formatBytes } from "@/lib/format";
@@ -37,12 +39,18 @@ async function readPageCount(file: File): Promise<number | null> {
   }
 }
 
+/** A new file waiting for the replace confirmation: a file from disk or a link to import. */
+type Replacement = { kind: "upload"; file: File } | { kind: "link"; url: string };
+
 export function UploadFile({ bookId, file, fileMissing, hasReadingData }: UploadFileProps) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
-  const [pending, setPending] = useState(false);
+  const [pending, setPending] = useState<"upload" | "import" | null>(null);
   /** A replacement chosen while the book has reading data: held until the user confirms. */
-  const [replacement, setReplacement] = useState<File | null>(null);
+  const [replacement, setReplacement] = useState<Replacement | null>(null);
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [link, setLink] = useState("");
+  const linkId = useId();
 
   function clearInput() {
     if (inputRef.current) inputRef.current.value = "";
@@ -51,30 +59,62 @@ export function UploadFile({ bookId, file, fileMissing, hasReadingData }: Upload
   function handleChange(event: React.ChangeEvent<HTMLInputElement>) {
     const chosen = event.currentTarget.files?.[0];
     if (!chosen) return;
-    if (file && hasReadingData) setReplacement(chosen);
+    if (file && hasReadingData) setReplacement({ kind: "upload", file: chosen });
     else void upload(chosen);
   }
 
+  function handleImportSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const url = link.trim();
+    if (file && hasReadingData) setReplacement({ kind: "link", url });
+    else void importLink(url);
+  }
+
+  /** Shows the outcome of an upload or import response. */
+  async function report(res: Response): Promise<boolean> {
+    if (res.ok) {
+      toast.success("File attached");
+      router.refresh();
+      return true;
+    }
+    const json = (await res.json().catch(() => null)) as { error?: string } | null;
+    toast.error(json?.error ?? ERROR_TOAST);
+    return false;
+  }
+
+  async function importLink(url: string) {
+    setPending("import");
+    try {
+      const res = await fetch(`/api/books/${bookId}/import`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+      if (await report(res)) {
+        setLink("");
+        setLinkOpen(false);
+      }
+    } catch {
+      toast.error(ERROR_TOAST);
+    } finally {
+      setPending(null);
+    }
+  }
+
   async function upload(chosen: File) {
-    setPending(true);
+    setPending("upload");
     try {
       const pageCount = await readPageCount(chosen);
       const body = new FormData();
       body.append("file", chosen);
       if (pageCount !== null) body.append("pageCount", String(pageCount));
       const res = await fetch(`/api/books/${bookId}/file`, { method: "POST", body });
-      if (res.ok) {
-        toast.success("File attached");
-        router.refresh();
-      } else {
-        const json = (await res.json().catch(() => null)) as { error?: string } | null;
-        toast.error(json?.error ?? ERROR_TOAST);
-      }
+      await report(res);
     } catch {
       toast.error(ERROR_TOAST);
     } finally {
       clearInput();
-      setPending(false);
+      setPending(null);
     }
   }
 
@@ -123,20 +163,33 @@ export function UploadFile({ bookId, file, fileMissing, hasReadingData }: Upload
         description="Replacing the file removes your reading position, bookmarks and highlights for this book."
         confirmLabel="Replace file"
         onConfirm={async () => {
-          if (replacement) await upload(replacement);
+          if (replacement?.kind === "upload") await upload(replacement.file);
+          else if (replacement?.kind === "link") await importLink(replacement.url);
           return true;
         }}
       />
       <div className="flex flex-wrap gap-2">
-        <Button type="button" variant="outline" size="sm" disabled={pending} onClick={() => inputRef.current?.click()}>
+        <Button type="button" variant="outline" size="sm" disabled={pending !== null} onClick={() => inputRef.current?.click()}>
           <FileUp aria-hidden="true" />
-          {pending ? "Uploading…" : file ? "Replace file" : "Upload PDF or EPUB"}
+          {pending === "upload" ? "Uploading…" : file ? "Replace file" : "Upload PDF or EPUB"}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={pending !== null}
+          aria-expanded={linkOpen}
+          aria-controls={`${linkId}-form`}
+          onClick={() => setLinkOpen((open) => !open)}
+        >
+          <Link2 aria-hidden="true" />
+          Import from link
         </Button>
         {file ? (
           <ConfirmDialog
             destructive
             trigger={
-              <Button type="button" variant="outline" size="sm" disabled={pending}>
+              <Button type="button" variant="outline" size="sm" disabled={pending !== null}>
                 <Trash2 aria-hidden="true" />
                 Remove file
               </Button>
@@ -148,6 +201,29 @@ export function UploadFile({ bookId, file, fileMissing, hasReadingData }: Upload
           />
         ) : null}
       </div>
+      {linkOpen ? (
+        <form id={`${linkId}-form`} noValidate className="space-y-2" onSubmit={handleImportSubmit}>
+          <Label htmlFor={linkId}>Link to a PDF or EPUB file</Label>
+          <div className="flex flex-wrap gap-2">
+            <Input
+              id={linkId}
+              type="url"
+              inputMode="url"
+              autoComplete="off"
+              placeholder="https://example.com/book.pdf"
+              className="min-w-0 flex-1 basis-60"
+              value={link}
+              disabled={pending !== null}
+              onChange={(event) => setLink(event.currentTarget.value)}
+              autoFocus
+            />
+            <Button type="submit" size="sm" disabled={pending !== null || link.trim() === ""}>
+              {pending === "import" ? "Importing…" : "Import"}
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">Use a direct link to the file. Pages that only show the book in their own viewer can&apos;t be imported.</p>
+        </form>
+      ) : null}
     </div>
   );
 }
