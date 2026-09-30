@@ -56,6 +56,16 @@ async function makeBook(db: PrismaClient, status = "want") {
 const file = { format: "pdf" as const, originalName: "a.pdf", storagePath: "books/x/book.pdf", sizeBytes: 10, pageCount: 200 };
 
 describe("reading data layer", () => {
+  it("attachFile refuses a deleted book and reports whether it attached", async () => {
+    const db = newClient();
+    const a = await makeBook(db);
+    expect(await attachFile(db, a.id, file)).toBe(true);
+    const gone = await db.book.create({ data: { title: "G", author: "A", deletedAt: new Date() } });
+    expect(await attachFile(db, gone.id, file)).toBe(false);
+    expect(await db.bookFile.findUnique({ where: { bookId: gone.id } })).toBeNull();
+    expect(await attachFile(db, "no-such-book", file)).toBe(false);
+  });
+
   it("attachFile stores the file and fills Book.pages only when empty", async () => {
     const db = newClient();
     const a = await makeBook(db);

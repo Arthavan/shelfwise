@@ -1,12 +1,13 @@
+import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { ERROR_TOAST } from "@/lib/constants";
 import { db } from "@/lib/db";
+import { storeBookFile } from "@/lib/data/book-file";
 import { ensureInitialized } from "@/lib/data/maintenance";
 import { fetchRemoteFile, fileNameFromUrl, loopbackAllowed, MAX_URL_LENGTH, RemoteFetchError, remoteFetchMessage, type RemoteFetchCode } from "@/lib/remote-fetch";
-import { isSameOrigin } from "@/lib/request-guard";
-import { storeBookFile } from "@/lib/store-book-file";
+import { isSameOrigin, readLimitedText } from "@/lib/request-guard";
 import { maxUploadBytes } from "@/lib/upload";
 import { idSchema } from "@/lib/validation";
 
@@ -16,6 +17,8 @@ type Ctx = { params: Promise<{ id: string }> };
 const json = (body: object, status: number) => NextResponse.json(body, { status });
 
 const bodySchema = z.object({ url: z.string().max(MAX_URL_LENGTH * 2) });
+/** The JSON body only carries a link: anything bigger is refused before it is read. */
+const MAX_BODY_BYTES = 8 * 1024;
 
 const STATUS: Record<RemoteFetchCode, number> = {
   "invalid-url": 400,
@@ -26,6 +29,7 @@ const STATUS: Record<RemoteFetchCode, number> = {
   "too-large": 413,
   timeout: 504,
   network: 502,
+  truncated: 502,
   "too-many-redirects": 502,
 };
 
@@ -43,6 +47,7 @@ async function importFromLink(request: Request, { params }: Ctx): Promise<Respon
   if (!isSameOrigin(request)) return json({ ok: false, error: "Cross-origin requests are not allowed" }, 403);
   const contentType = request.headers.get("content-type")?.split(";")[0].trim().toLowerCase();
   if (contentType !== "application/json") return json({ ok: false, error: "Expected a JSON body" }, 415);
+  if (Number(request.headers.get("content-length") ?? 0) > MAX_BODY_BYTES) return json({ ok: false, error: "Request is too large" }, 413);
   const id = idSchema.safeParse((await params).id);
   if (!id.success) return json({ ok: false, error: "Book not found" }, 404);
 
@@ -51,7 +56,15 @@ async function importFromLink(request: Request, { params }: Ctx): Promise<Respon
   if (!book) return json({ ok: false, error: "Book not found" }, 404);
 
   const limit = maxUploadBytes();
-  const body = bodySchema.safeParse(await request.json().catch(() => null));
+  const text = await readLimitedText(request, MAX_BODY_BYTES);
+  if (text === null) return json({ ok: false, error: "Request is too large" }, 413);
+  let parsed: unknown = null;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    // Treated like a missing link below.
+  }
+  const body = bodySchema.safeParse(parsed);
   if (!body.success) return json({ ok: false, error: remoteFetchMessage(new RemoteFetchError("invalid-url"), limit) }, 400);
 
   let remote;
@@ -63,7 +76,12 @@ async function importFromLink(request: Request, { params }: Ctx): Promise<Respon
   }
 
   // No page count for imports: the server has no PDF parser. The reader reads it from the file.
-  const stored = await storeBookFile(id.data, remote.data, fileNameFromUrl(remote.url, remote.format), null);
-  if (!stored) return json({ ok: false, error: remoteFetchMessage(new RemoteFetchError("not-a-book"), limit) }, 415);
-  return json({ ok: true, ...stored }, 200);
+  // storeBookFile re-checks the book is live now that the download is done (it may have been deleted).
+  const stored = await storeBookFile(db, id.data, remote.data, fileNameFromUrl(remote.url, remote.format), null);
+  if (!stored.ok) {
+    if (stored.reason === "not-found") return json({ ok: false, error: "Book not found" }, 404);
+    return json({ ok: false, error: remoteFetchMessage(new RemoteFetchError("not-a-book"), limit) }, 415);
+  }
+  revalidatePath("/", "layout");
+  return json({ ok: true, format: stored.format, sizeBytes: stored.sizeBytes }, 200);
 }

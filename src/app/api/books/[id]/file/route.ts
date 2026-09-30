@@ -7,11 +7,11 @@ import { revalidatePath } from "next/cache";
 import { ERROR_TOAST } from "@/lib/constants";
 import { db } from "@/lib/db";
 import { ensureInitialized } from "@/lib/data/maintenance";
+import { storeBookFile } from "@/lib/data/book-file";
 import { getFile, removeFileRow } from "@/lib/data/reading";
 import { deleteBookFiles, resolveStoragePath } from "@/lib/file-storage";
 import { parseRange } from "@/lib/http-range";
 import { isSameOrigin } from "@/lib/request-guard";
-import { storeBookFile } from "@/lib/store-book-file";
 import { maxUploadBytes } from "@/lib/upload";
 import { idSchema } from "@/lib/validation";
 
@@ -93,9 +93,12 @@ async function upload(request: Request, { params }: Ctx): Promise<Response> {
 
   const data = Buffer.from(await entry.arrayBuffer());
   const pageCountRaw = form.get("pageCount");
-  const stored = await storeBookFile(id.data, data, entry.name, pageCountRaw === null ? null : Number(pageCountRaw));
-  if (!stored) return json({ ok: false, error: "That file isn't a PDF or EPUB" }, 415);
-  return json({ ok: true, ...stored }, 200);
+  const stored = await storeBookFile(db, id.data, data, entry.name, pageCountRaw === null ? null : Number(pageCountRaw));
+  if (!stored.ok) {
+    return stored.reason === "not-found" ? json({ ok: false, error: "Book not found" }, 404) : json({ ok: false, error: "That file isn't a PDF or EPUB" }, 415);
+  }
+  revalidatePath("/", "layout");
+  return json({ ok: true, format: stored.format, sizeBytes: stored.sizeBytes }, 200);
 }
 
 export async function DELETE(request: Request, ctx: Ctx) {

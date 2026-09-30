@@ -25,6 +25,7 @@ export type RemoteFetchCode =
   | "too-large"
   | "timeout"
   | "network"
+  | "truncated"
   | "too-many-redirects";
 
 export class RemoteFetchError extends Error {
@@ -54,6 +55,8 @@ export function remoteFetchMessage(err: RemoteFetchError, maxBytes: number): str
       return `File is too large (max ${Math.round(maxBytes / 1048576)} MB)`;
     case "timeout":
       return "The download took too long";
+    case "truncated":
+      return "The download was cut off";
     case "too-many-redirects":
       return "The link redirected too many times";
     case "network":
@@ -242,7 +245,26 @@ interface Target {
   family: 4 | 6;
 }
 
-async function resolveTarget(url: URL, allowLoopback: boolean, resolve: Resolver): Promise<Target> {
+/** Settles with `promise`, or rejects with a timeout as soon as `signal` aborts (DNS lookups can't be cancelled). */
+function untilAborted<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) return Promise.reject(new RemoteFetchError("timeout"));
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(new RemoteFetchError("timeout"));
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (err: unknown) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(err);
+      },
+    );
+  });
+}
+
+async function resolveTarget(url: URL, allowLoopback: boolean, resolve: Resolver, signal: AbortSignal): Promise<Target> {
   const host = url.hostname.replace(/^\[|\]$/g, "");
   const allowed = (address: string) => {
     const c = classifyAddress(address);
@@ -256,9 +278,9 @@ async function resolveTarget(url: URL, allowLoopback: boolean, resolve: Resolver
   if (isBlockedHostname(host)) throw new RemoteFetchError("blocked");
   let addresses: { address: string; family: number }[];
   try {
-    addresses = await resolve(host);
-  } catch {
-    throw new RemoteFetchError("network");
+    addresses = await untilAborted(resolve(host), signal);
+  } catch (err) {
+    throw err instanceof RemoteFetchError ? err : new RemoteFetchError("network");
   }
   if (addresses.length === 0) throw new RemoteFetchError("network");
   if (!addresses.every((a) => allowed(a.address))) throw new RemoteFetchError("blocked");
@@ -300,22 +322,45 @@ function requestOnce(url: URL, target: Target, signal: AbortSignal): Promise<Inc
 
 const REDIRECTS = new Set([301, 302, 303, 307, 308]);
 
-async function readBody(res: IncomingMessage, maxBytes: number): Promise<Buffer> {
-  const declared = Number(res.headers["content-length"]);
-  if (Number.isFinite(declared) && declared > maxBytes) throw new RemoteFetchError("too-large");
+/** The body, and whether its length could be checked against the framing (Content-Length or chunked). */
+async function readBody(res: IncomingMessage, maxBytes: number, signal: AbortSignal): Promise<{ data: Buffer; framed: boolean }> {
+  const lengthHeader = res.headers["content-length"];
+  const declared = lengthHeader === undefined ? null : Number(lengthHeader);
+  if (declared !== null && Number.isFinite(declared) && declared > maxBytes) throw new RemoteFetchError("too-large");
+  const chunked = /\bchunked\b/i.test(String(res.headers["transfer-encoding"] ?? ""));
   const chunks: Buffer[] = [];
   let total = 0;
   let sniffed = false;
-  for await (const chunk of res as AsyncIterable<Buffer>) {
-    total += chunk.length;
-    if (total > maxBytes) throw new RemoteFetchError("too-large");
-    chunks.push(chunk);
-    if (!sniffed && total >= SNIFF_BYTES) {
-      sniffed = true;
-      if (!detectFormat(Buffer.concat(chunks).subarray(0, SNIFF_BYTES))) throw new RemoteFetchError("not-a-book");
+  try {
+    for await (const chunk of res as AsyncIterable<Buffer>) {
+      total += chunk.length;
+      if (total > maxBytes) throw new RemoteFetchError("too-large");
+      chunks.push(chunk);
+      if (!sniffed && total >= SNIFF_BYTES) {
+        sniffed = true;
+        if (!detectFormat(Buffer.concat(chunks).subarray(0, SNIFF_BYTES))) throw new RemoteFetchError("not-a-book");
+      }
     }
+  } catch (err) {
+    if (err instanceof RemoteFetchError) throw err;
+    if (signal.aborted) throw new RemoteFetchError("timeout");
+    // The stream broke after the headers: the body we have is incomplete.
+    throw new RemoteFetchError("truncated");
   }
-  return Buffer.concat(chunks);
+  // An early close must never pass for a complete file.
+  if (declared !== null && total !== declared) throw new RemoteFetchError("truncated");
+  if (chunked && !res.complete) throw new RemoteFetchError("truncated");
+  return { data: Buffer.concat(chunks), framed: declared !== null || chunked };
+}
+
+/**
+ * For a body delimited only by the connection closing, the length can't be verified, so the file must
+ * at least end the way a whole file does: a PDF with %%EOF near its end, an EPUB (zip) with its
+ * end-of-central-directory record.
+ */
+export function endsCompletely(data: Buffer, format: "pdf" | "epub"): boolean {
+  if (format === "pdf") return data.subarray(Math.max(0, data.length - 1024)).includes("%%EOF", 0, "latin1");
+  return data.subarray(Math.max(0, data.length - 65557)).includes(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
 }
 
 /**
@@ -329,7 +374,7 @@ export async function fetchRemoteFile(input: string, options: FetchRemoteOptions
   let res: IncomingMessage | null = null;
   try {
     for (let hop = 0; ; hop++) {
-      const target = await resolveTarget(url, allowLoopback, resolve);
+      const target = await resolveTarget(url, allowLoopback, resolve, signal);
       if (signal.aborted) throw new RemoteFetchError("timeout");
       res = await requestOnce(url, target, signal);
       const status = res.statusCode ?? 0;
@@ -351,9 +396,10 @@ export async function fetchRemoteFile(input: string, options: FetchRemoteOptions
     if (status < 200 || status > 299) throw new RemoteFetchError("http-error", status);
     const current = res;
     signal.addEventListener("abort", () => current.destroy(), { once: true });
-    const data = await readBody(res, maxBytes);
+    const { data, framed } = await readBody(res, maxBytes, signal);
     const format = detectFormat(data);
     if (!format) throw new RemoteFetchError("not-a-book");
+    if (!framed && !endsCompletely(data, format)) throw new RemoteFetchError("truncated");
     return { data, format, url };
   } catch (err) {
     if (err instanceof RemoteFetchError) throw err;

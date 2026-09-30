@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import type { AddressInfo } from "node:net";
+import { createServer as createTcpServer, type AddressInfo, type Server as TcpServer } from "node:net";
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -144,6 +144,7 @@ describe("remoteFetchMessage", () => {
     [new RemoteFetchError("too-large"), "File is too large (max 100 MB)"],
     [new RemoteFetchError("timeout"), "The download took too long"],
     [new RemoteFetchError("network"), "Couldn't reach that address"],
+    [new RemoteFetchError("truncated"), "The download was cut off"],
   ])("%o", (err, message) => expect(remoteFetchMessage(err, mb)).toBe(message));
 });
 
@@ -223,8 +224,43 @@ routes.set("/html-stream", (_req, res) => {
   }, 5);
   res.on("close", () => clearInterval(timer));
 });
+routes.set("/short-length", (_req, res) => {
+  // Declares the whole PDF but sends only part of it, then drops the connection.
+  res.writeHead(200, { "Content-Length": String(PDF.length) });
+  res.write(PDF.subarray(0, PDF.length - 100), () => res.socket?.destroy());
+});
 routes.set("/slow", () => {
   // Never answers.
+});
+
+/*
+ * A raw HTTP/1.1 server for bodies delimited only by the connection closing (no Content-Length, not
+ * chunked): Node's http server would always add one of the two.
+ */
+let rawServer: TcpServer;
+let rawPort: number;
+const RAW: Record<string, Buffer> = {
+  "/full.pdf": PDF,
+  "/cut.pdf": PDF.subarray(0, PDF.length - 40),
+  "/full.epub": EPUB,
+  "/cut.epub": EPUB.subarray(0, EPUB.length - 30),
+};
+beforeAll(async () => {
+  rawServer = createTcpServer((socket) => {
+    socket.on("error", () => {}); // the client may hang up first
+    socket.once("data", (chunk) => {
+      const path = chunk.toString("latin1").split(" ")[1] ?? "";
+      const body = RAW[path];
+      const head = (status: string) => Buffer.from(`HTTP/1.1 ${status}\r\nConnection: close\r\n\r\n`, "latin1");
+      if (!body) return void socket.end(head("404 Not Found"));
+      socket.end(Buffer.concat([head("200 OK"), body]));
+    });
+  });
+  await new Promise<void>((resolve) => rawServer.listen(0, "127.0.0.1", resolve));
+  rawPort = (rawServer.address() as AddressInfo).port;
+});
+afterAll(async () => {
+  await new Promise((resolve) => rawServer.close(resolve));
 });
 
 const base = () => `http://127.0.0.1:${port}`;
@@ -378,6 +414,23 @@ describe("fetchRemoteFile", () => {
     // The same body fits a larger cap.
     const r = await fetchRemoteFile(`${base()}/chunked-huge`, { ...local, maxBytes: 1024 * 1024 });
     expect(r.format).toBe("pdf");
+  });
+
+  it("fails when the connection closes before the declared Content-Length arrives", async () => {
+    expect((await failure(fetchRemoteFile(`${base()}/short-length`, local))).code).toBe("truncated");
+  });
+
+  it("accepts a complete connection-close body only when the file ends properly", async () => {
+    const raw = `http://127.0.0.1:${rawPort}`;
+    expect((await fetchRemoteFile(`${raw}/full.pdf`, local)).data.equals(PDF)).toBe(true);
+    expect((await fetchRemoteFile(`${raw}/full.epub`, local)).format).toBe("epub");
+    expect((await failure(fetchRemoteFile(`${raw}/cut.pdf`, local))).code).toBe("truncated");
+    expect((await failure(fetchRemoteFile(`${raw}/cut.epub`, local))).code).toBe("truncated");
+  });
+
+  it("bounds a DNS lookup that never answers by the timeout", async () => {
+    const resolve: Resolver = () => new Promise(() => {});
+    expect((await failure(fetchRemoteFile("http://hang.example.test/a.pdf", { maxBytes: 1024, timeoutMs: 200, resolve }))).code).toBe("timeout");
   });
 
   it("times out", async () => {

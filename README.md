@@ -63,9 +63,9 @@ The demo data is also seeded automatically the first time the app reads an empty
 
 ## Tests
 
-- Unit: `npm test` (267 tests across 16 files: rules, validation, stats, library, formatting, cover colors, demo data, maintenance, the reader's upload checks, byte-range parsing, selection handling and progress saving, plus the link importer's address and download safety checks).
+- Unit: `npm test` (282 tests across 18 files: rules, validation, stats, library, formatting, cover colors, demo data, maintenance, the reader's upload checks, byte-range parsing, selection handling and progress saving, plus the link importer's address, download and storage safety checks).
 - Type check: `npx tsc --noEmit`.
-- E2E: `npx playwright test` builds the app, uses a separate `e2e-<port>.db`, runs with one worker, and sets `E2E_TEST_HOOKS=1`. The last run passed 93 of 93 (one EPUB reader test needed its retry). Run `npx playwright install chromium` first if the browser is missing.
+- E2E: `npx playwright test` builds the app, uses a separate `e2e-<port>.db`, runs with one worker, and sets `E2E_TEST_HOOKS=1`. The last run passed 93 of 93. Run `npx playwright install chromium` first if the browser is missing.
 
 ## Project structure
 

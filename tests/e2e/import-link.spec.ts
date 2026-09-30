@@ -118,6 +118,10 @@ test("the import route guards its input", async ({ page, request }) => {
   const crossOrigin = await request.post(url, { headers: { Origin: "https://evil.example" }, data: { url: `${origin}/files/novel.epub` } });
   expect(crossOrigin.status()).toBe(403);
 
+  const oversized = await request.post(url, { data: { url: `https://example.com/${"a".repeat(10_000)}.pdf` } });
+  expect(oversized.status()).toBe(413);
+  expect(await oversized.json()).toEqual({ ok: false, error: "Request is too large" });
+
   const badBody = await request.post(url, { data: { link: 42 } });
   expect(badBody.status()).toBe(400);
   expect((await badBody.json()).error).toBe("Enter a full web address starting with http:// or https://");
