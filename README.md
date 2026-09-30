@@ -11,6 +11,7 @@ A calm, private personal reading list. Save books with a title and author, move 
 - **Stats**: totals by status, finished this year, pages read, average rating, a 12-month "Finished per month" chart and rating distribution.
 - **Search and sort**: search title or author, sort by recent, title, author or rating. Both are kept in the URL.
 - **Read in the app**: upload a PDF or EPUB to a book and read it in Shelfwise, with automatic resume, bookmarks, highlights with notes, in-book search, zoom, page/scroll modes and page themes. PDF is the primary format, EPUB is supported too. One file per book, up to 100 MB by default, and no OCR (scanned PDFs without a text layer cannot be searched or highlighted).
+- **Import from link**: paste a link to a PDF or EPUB file instead of uploading it. Shelfwise downloads it on the server and stores it like an upload (same checks, same size limit, same replace confirmation). Only direct file links work: sites that only let you read in their own viewer refuse the download and cannot be imported. Private and local network addresses (localhost, LAN, cloud metadata) are blocked, redirects are limited to 3, and downloads stop after 30 seconds. Imported PDFs get no page count on the book (the reader counts pages when it opens the file).
 - **Delete with undo** (soft delete, restored exactly).
 - **Yearly reading goal** with a progress bar.
 - **Pick my next read**: a random pick from your Want to read list.
@@ -62,9 +63,9 @@ The demo data is also seeded automatically the first time the app reads an empty
 
 ## Tests
 
-- Unit: `npm test` (141 tests across 15 files: rules, validation, stats, library, formatting, cover colors, demo data, maintenance, plus the reader's upload checks, byte-range parsing, selection handling and progress saving).
+- Unit: `npm test` (267 tests across 16 files: rules, validation, stats, library, formatting, cover colors, demo data, maintenance, the reader's upload checks, byte-range parsing, selection handling and progress saving, plus the link importer's address and download safety checks).
 - Type check: `npx tsc --noEmit`.
-- E2E: `npx playwright test` builds the app, uses a separate `e2e-<port>.db`, runs with one worker, and sets `E2E_TEST_HOOKS=1`. The last run passed 85 of 85. Run `npx playwright install chromium` first if the browser is missing.
+- E2E: `npx playwright test` builds the app, uses a separate `e2e-<port>.db`, runs with one worker, and sets `E2E_TEST_HOOKS=1`. The last run passed 93 of 93 (one EPUB reader test needed its retry). Run `npx playwright install chromium` first if the browser is missing.
 
 ## Project structure
 
