@@ -29,9 +29,14 @@ export function BookCard({ book, reading }: { book: Book; reading?: ReadingSumma
         <div className="mt-auto space-y-3 pt-4">
           {reading ? (
             <div className="space-y-2">
-              {reading.lastReadAt ? <ReadingProgress percent={reading.percent} /> : null}
+              {reading.hasProgress ? <ReadingProgress percent={reading.percent} /> : null}
               <Button asChild size="sm" variant="outline">
-                <Link href={`/books/${book.id}/read`}>{reading.lastReadAt ? "Continue" : "Read"}</Link>
+                <Link
+                  href={`/books/${book.id}/read`}
+                  aria-label={`${reading.lastReadAt ? "Continue reading" : "Read"} ${book.title}`}
+                >
+                  {reading.lastReadAt ? "Continue" : "Read"}
+                </Link>
               </Button>
             </div>
           ) : null}

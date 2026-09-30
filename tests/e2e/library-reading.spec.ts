@@ -24,7 +24,7 @@ test("without files the library shows no reading UI", async ({ page }) => {
   await expect(card(page, "Piranesi")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Continue reading" })).toHaveCount(0);
   await expect(page.getByRole("progressbar")).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "Read", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: /^(Read|Continue reading) / })).toHaveCount(0);
 });
 
 test("a book read part-way shows progress, a Continue row and resumes", async ({ page }) => {
@@ -34,9 +34,9 @@ test("a book read part-way shows progress, a Continue row and resumes", async ({
   const region = continueRegion(page);
   await expect(region).toBeVisible();
   await expect(region.getByText("Piranesi")).toBeVisible();
-  await expect(region.getByRole("link", { name: "Continue", exact: true })).toHaveAttribute("href", /\/books\/[^/]+\/read$/);
+  await expect(region.getByRole("link", { name: "Continue reading Piranesi", exact: true })).toHaveAttribute("href", /\/books\/[^/]+\/read$/);
   await expect(card(page, "Piranesi").getByRole("progressbar", { name: "Reading progress" })).toHaveAttribute("aria-valuenow", "60");
-  await card(page, "Piranesi").getByRole("link", { name: "Continue", exact: true }).click();
+  await card(page, "Piranesi").getByRole("link", { name: "Continue reading Piranesi", exact: true }).click();
   await expect(page.getByRole("textbox", { name: "Page" })).toHaveValue("3");
 });
 
@@ -44,17 +44,28 @@ test("a book with a file but no progress offers Read and no Continue row entry",
   await openDetail(page, "Piranesi");
   await uploadPdf(page, numberedPages(5));
   await page.goto("/");
-  await expect(card(page, "Piranesi").getByRole("link", { name: "Read", exact: true })).toBeVisible();
+  await expect(card(page, "Piranesi").getByRole("link", { name: "Read Piranesi", exact: true })).toBeVisible();
   await expect(card(page, "Piranesi").getByRole("progressbar")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Continue reading" })).toHaveCount(0);
+});
+
+test("a book opened but not paged through is in the row and its card says Continue", async ({ page }) => {
+  await openReader(page);
+  await page.getByRole("link", { name: "Back to book" }).click();
+  await expect(page.getByRole("combobox", { name: "Status for Piranesi" })).toHaveValue("reading");
+  await page.goto("/");
+  await expect(continueRegion(page).getByRole("link", { name: "Continue reading Piranesi", exact: true })).toBeVisible();
+  await expect(card(page, "Piranesi").getByRole("link", { name: "Continue reading Piranesi", exact: true })).toBeVisible();
+  // No page position saved yet, so no progress bar.
+  await expect(card(page, "Piranesi").getByRole("progressbar")).toHaveCount(0);
 });
 
 test("finished books stay out of the row and the row is ordered by most recently read", async ({ page }) => {
   await openDetail(page, "The Hobbit");
   await uploadPdf(page, numberedPages(5));
   await page.goto("/");
-  await expect(card(page, "The Hobbit").getByRole("link", { name: "Read", exact: true })).toBeVisible();
-  await card(page, "The Hobbit").getByRole("link", { name: "Read", exact: true }).click();
+  await expect(card(page, "The Hobbit").getByRole("link", { name: "Read The Hobbit", exact: true })).toBeVisible();
+  await card(page, "The Hobbit").getByRole("link", { name: "Read The Hobbit", exact: true }).click();
   await expect(page.getByRole("textbox", { name: "Page" })).toHaveValue("1");
   await expect(page.locator(".textLayer span").first()).toBeVisible();
   await readTo(page, 2);
@@ -69,7 +80,7 @@ test("finished books stay out of the row and the row is ordered by most recently
   await expect(region.getByText("The Hobbit")).toHaveCount(0);
   const titles = region.getByRole("listitem").locator("[data-continue-title]");
   await expect(titles).toHaveText(["The Overstory", "Piranesi"]);
-  await expect(card(page, "The Hobbit").getByRole("link", { name: "Continue", exact: true })).toBeVisible();
+  await expect(card(page, "The Hobbit").getByRole("link", { name: "Continue reading The Hobbit", exact: true })).toBeVisible();
 
   await page.goto("/?q=Piranesi");
   await expect(page.getByRole("heading", { name: "Continue reading" })).toHaveCount(0);

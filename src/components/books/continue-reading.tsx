@@ -28,7 +28,9 @@ export function ContinueReading({ items }: { items: readonly ContinueItem[] }) {
               </p>
               <p className="mt-0.5 text-sm text-muted-foreground">{Math.round(item.percent)}% read</p>
               <Button asChild size="sm" variant="outline" className="mt-2">
-                <Link href={`/books/${item.id}/read`}>Continue</Link>
+                <Link href={`/books/${item.id}/read`} aria-label={`Continue reading ${item.title}`}>
+                  Continue
+                </Link>
               </Button>
             </div>
           </li>

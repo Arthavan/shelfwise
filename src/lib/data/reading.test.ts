@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { PrismaClient } from "../../generated/prisma/client";
 import {
   addBookmark, addHighlight, attachFile, getFile, getProgress, getReadingSummaries, listBookmarks, listHighlights,
-  removeBookmark, removeHighlight, saveProgress, startReading, updateHighlight,
+  removeBookmark, removeFileRow, removeHighlight, saveProgress, startReading, updateHighlight,
 } from "./reading";
 
 const MIGRATIONS_DIR = path.resolve(__dirname, "../../../prisma/migrations");
@@ -162,7 +162,7 @@ describe("reading data layer", () => {
     await attachFile(db, a.id, file);
     await saveProgress(db, a.id, { location: "50", percent: 25, viewMode: "page", pageTheme: "light" }, new Date());
     const s = await getReadingSummaries(db);
-    expect(s[a.id]).toEqual({ percent: 25, location: "50", format: "pdf", lastReadAt: expect.any(Date) });
+    expect(s[a.id]).toEqual({ percent: 25, location: "50", format: "pdf", lastReadAt: expect.any(Date), hasProgress: true });
     expect(s[b.id]).toBeUndefined();
   });
 
@@ -171,6 +171,28 @@ describe("reading data layer", () => {
     const a = await makeBook(db);
     await attachFile(db, a.id, file);
     const s = await getReadingSummaries(db);
-    expect(s[a.id]).toEqual({ percent: 0, location: "1", format: "pdf", lastReadAt: null });
+    expect(s[a.id]).toEqual({ percent: 0, location: "1", format: "pdf", lastReadAt: null, hasProgress: false });
+  });
+
+  it("getReadingSummaries uses Book.lastReadAt, so a book opened but never paged through counts as read", async () => {
+    const db = newClient();
+    const a = await makeBook(db);
+    await attachFile(db, a.id, file);
+    const opened = new Date("2026-04-01T00:00:00Z");
+    await startReading(db, a.id, opened);
+    const s = await getReadingSummaries(db);
+    expect(s[a.id]).toEqual({ percent: 0, location: "1", format: "pdf", lastReadAt: opened, hasProgress: false });
+  });
+
+  it("replacing or removing the file clears Book.lastReadAt with the progress", async () => {
+    const db = newClient();
+    const a = await makeBook(db);
+    await attachFile(db, a.id, file);
+    await startReading(db, a.id, new Date());
+    await attachFile(db, a.id, file);
+    expect((await getReadingSummaries(db))[a.id].lastReadAt).toBeNull();
+    await startReading(db, a.id, new Date());
+    await removeFileRow(db, a.id);
+    expect((await db.book.findUnique({ where: { id: a.id } }))?.lastReadAt).toBeNull();
   });
 });

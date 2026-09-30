@@ -23,8 +23,10 @@ export async function attachFile(
     await tx.bookmark.deleteMany({ where: { bookId } });
     await tx.highlight.deleteMany({ where: { bookId } });
     const book = await tx.book.findUnique({ where: { id: bookId }, select: { pages: true } });
-    if (book && book.pages == null && f.pageCount) {
-      await tx.book.update({ where: { id: bookId }, data: { pages: f.pageCount } });
+    if (book) {
+      // A new file starts unread: clear lastReadAt with the progress, and fill empty page counts.
+      const pages = book.pages == null && f.pageCount ? { pages: f.pageCount } : {};
+      await tx.book.update({ where: { id: bookId }, data: { lastReadAt: null, ...pages } });
     }
   });
 }
@@ -44,6 +46,7 @@ export async function removeFileRow(db: PrismaClient, bookId: string): Promise<s
     db.readingProgress.deleteMany({ where: { bookId } }),
     db.bookmark.deleteMany({ where: { bookId } }),
     db.highlight.deleteMany({ where: { bookId } }),
+    db.book.updateMany({ where: { id: bookId }, data: { lastReadAt: null } }),
   ]);
   return old?.storagePath ?? null;
 }
@@ -184,7 +187,8 @@ export async function getReadingSummaries(
   const out: Record<string, ReadingSummary> = {};
   for (const r of rows) {
     if (!isFileFormat(r.format)) continue;
-    out[r.bookId] = { percent: r.book.progress?.percent ?? 0, location: r.book.progress?.location ?? "1", format: r.format, lastReadAt: r.book.progress?.lastReadAt ?? null };
+    const p = r.book.progress;
+    out[r.bookId] = { percent: p?.percent ?? 0, location: p?.location ?? "1", format: r.format, lastReadAt: r.book.lastReadAt, hasProgress: p != null };
   }
   return out;
 }

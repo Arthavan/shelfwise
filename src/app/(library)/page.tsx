@@ -10,7 +10,7 @@ import { LIBRARY_PANEL_ID, StatusTabs, statusTabId } from "@/components/books/st
 import { listBooks } from "@/lib/data/books";
 import { getReadingSummaries } from "@/lib/data/reading";
 import { db } from "@/lib/db";
-import { buildLibraryHref, countByStatus, filterAndSortBooks, parseLibraryParams } from "@/lib/library";
+import { buildLibraryHref, continueReadingBooks, countByStatus, filterAndSortBooks, parseLibraryParams } from "@/lib/library";
 
 export const dynamic = "force-dynamic";
 
@@ -29,11 +29,12 @@ export default async function LibraryPage({
 
   const candidates = books.filter((b) => b.status === "want").map(({ id, title, author }) => ({ id, title, author }));
 
-  const continueItems = books
-    .filter((b) => b.status === "reading" && summaries[b.id]?.lastReadAt)
-    .sort((a, b) => summaries[b.id].lastReadAt!.getTime() - summaries[a.id].lastReadAt!.getTime())
-    .slice(0, 3)
-    .map(({ id, title, author }) => ({ id, title, author, percent: summaries[id].percent }));
+  const continueItems = continueReadingBooks(books, summaries).map(({ id, title, author }) => ({
+    id,
+    title,
+    author,
+    percent: summaries[id].percent,
+  }));
 
   let content: React.ReactNode;
   if (counts.all === 0) {
