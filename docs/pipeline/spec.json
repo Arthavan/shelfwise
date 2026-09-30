@@ -1,0 +1,157 @@
+{
+  "name": "Shelfwise",
+  "slug": "shelfwise",
+  "summary": "A personal reading list where you save books by title and author, move them from Want to read to Reading to Finished, rate finished books, and see simple reading stats.",
+  "personas": [
+    "Casual reader who wants one place to remember recommended books and what they thought of the ones they finished",
+    "Avid reader (20+ books a year) who tracks yearly progress, average rating and books per month, and needs search and sort"
+  ],
+  "features": [
+    {
+      "id": "F1",
+      "name": "Add a book",
+      "priority": "must",
+      "description": "Form at /books/new with Title (required, max 200), Author (required, max 120), Status (default 'Want to read'), Pages (optional positive whole number), Notes (optional, max 2000). A star Rating input appears only when Status is Finished. Inline errors 'Title is required', 'Author is required', 'Pages must be a positive whole number'. On save, redirect to / with toast 'Book added'."
+    },
+    {
+      "id": "F2",
+      "name": "Library with status tabs",
+      "priority": "must",
+      "description": "Home page / lists book cards (generated initials cover, title, author, status, rating for finished books). Tabs 'All · N', 'Want to read · N', 'Reading · N', 'Finished · N' filter via ?status=want|reading|finished. Empty library shows 'Your shelf is empty' with 'Add your first book' link; empty tab shows 'No books in {Status}'."
+    },
+    {
+      "id": "F3",
+      "name": "Quick status changes",
+      "priority": "must",
+      "description": "Status select (accessible name 'Status for {title}') on each card and the detail page. Moving to Reading sets the started date if unset; moving to Finished sets the finished date to today; moving to Want to read clears the started date. Toasts 'Moved to Want to read', 'Moved to Reading', 'Marked as finished'."
+    },
+    {
+      "id": "F4",
+      "name": "Rate finished books",
+      "priority": "must",
+      "description": "Finished books show 'Rate this book' with star buttons 'Rate 1 star' to 'Rate 5 stars'. Rated books show stars with accessible name 'Rated N out of 5' and a 'Clear rating' button; unrated finished books show 'Not rated'. Non-finished books never show rating controls. Leaving Finished clears the rating and finished date."
+    },
+    {
+      "id": "F5",
+      "name": "Reading stats",
+      "priority": "must",
+      "description": "/stats shows stat cards Total books, Want to read, Reading, Finished, Finished this year, Pages read, Average rating (one decimal, '—' if none rated); a 'Finished per month' bar chart for the last 12 months with bars named '{Mon YYYY}: N books'; a 'Rating distribution' list '5 stars' to '1 star' with counts. With no books shows 'No stats yet' and an 'Add a book' link."
+    },
+    {
+      "id": "F6",
+      "name": "Book detail and edit",
+      "priority": "should",
+      "description": "/books/{id} shows the title as h1, author, status select, rating, pages, notes, 'Added on', 'Started on', 'Finished on' dates (en-US medium, e.g. 'Sep 30, 2026'). /books/{id}/edit is the prefilled F1 form; save shows toast 'Changes saved' and returns to the detail page. Unknown id shows 'Book not found' with 'Back to library' link."
+    },
+    {
+      "id": "F7",
+      "name": "Delete with confirmation and undo",
+      "priority": "should",
+      "description": "'Delete' on the detail page opens a dialog 'Delete \"{title}\"?' with 'Cancel' and 'Delete'. Confirming redirects to / with toast 'Book deleted' and an 'Undo' action that restores the book with its status, rating, dates and notes (soft delete)."
+    },
+    {
+      "id": "F8",
+      "name": "Search and sort",
+      "priority": "should",
+      "description": "'Search books' input (placeholder 'Search title or author') filters by case-insensitive substring of title or author, synced to ?q=. 'Sort by' select: Recently added (default), Title (A–Z), Author (A–Z), Highest rated, synced to ?sort=recent|title|author|rating. Combines with status tab. No matches shows 'No books match \"{q}\"' with 'Clear search' button."
+    },
+    {
+      "id": "F9",
+      "name": "Demo data and settings",
+      "priority": "should",
+      "description": "Database seeded on first run with 12 demo books (3 Want to read, 2 Reading, 7 Finished and rated). /settings has Theme (Light, Dark, System), 'Restore demo data' (confirm, then toast 'Demo data restored') and 'Delete all books' (dialog 'Delete all books?', then toast 'All books deleted')."
+    },
+    {
+      "id": "F10",
+      "name": "Theme, responsive layout and system states",
+      "priority": "should",
+      "description": "Header 'Toggle theme' button switches light/dark and persists across reloads. Layout works from 375px width without horizontal scroll with 'Library', 'Stats', 'Settings' nav links visible. Loading skeletons for library, detail and stats; error boundary 'Something went wrong' with 'Try again'."
+    },
+    {
+      "id": "F11",
+      "name": "Yearly reading goal",
+      "priority": "could",
+      "description": "On /stats, 'Set goal' accepts a whole number 1–999; a 'Reading goal {year}' card shows '{finished this year} of {goal} books' and a progressbar with aria-valuenow = finished this year and aria-valuemax = goal. Editable."
+    },
+    {
+      "id": "F12",
+      "name": "Pick my next read",
+      "priority": "could",
+      "description": "On the Want to read tab, 'Pick my next read' opens a dialog 'Your next read' showing a random Want to read book with 'Pick another' and 'Start reading'; 'Start reading' moves it to Reading. Hidden when there are no Want to read books."
+    }
+  ],
+  "screens": [
+    { "name": "Library", "path": "/", "purpose": "Status tabs, search, sort, book cards with inline status and rating, empty states, Pick my next read" },
+    { "name": "Add book", "path": "/books/new", "purpose": "Create a book with title, author, status, optional pages, notes and rating" },
+    { "name": "Book detail", "path": "/books/[id]", "purpose": "Full book info, status change, rating, dates, notes, edit and delete" },
+    { "name": "Edit book", "path": "/books/[id]/edit", "purpose": "Edit an existing book" },
+    { "name": "Stats", "path": "/stats", "purpose": "Stat cards, finished-per-month chart, rating distribution, yearly goal" },
+    { "name": "Settings", "path": "/settings", "purpose": "Theme choice, restore demo data, delete all books" },
+    { "name": "Not found", "path": "/404", "purpose": "Shown for unknown paths and book ids, with a link back to the library" }
+  ],
+  "acceptance_criteria": [
+    { "id": "AC-1", "feature": "F1", "given": "the library page /", "when": "the user clicks 'Add book'", "then": "the URL is /books/new and the form shows fields labeled Title, Author, Status (showing 'Want to read'), Pages and Notes", "e2e": true },
+    { "id": "AC-2", "feature": "F1", "given": "the Add book form is empty", "when": "the user clicks 'Save book'", "then": "'Title is required' and 'Author is required' are shown and the URL is still /books/new", "e2e": true },
+    { "id": "AC-3", "feature": "F1", "given": "the Add book form", "when": "the user enters Title 'The Left Hand of Darkness', Author 'Ursula K. Le Guin', selects Status 'Reading' and clicks 'Save book'", "then": "the URL is /, a toast 'Book added' appears, and the first card shows 'The Left Hand of Darkness', 'Ursula K. Le Guin' and status 'Reading'", "e2e": true },
+    { "id": "AC-4", "feature": "F1", "given": "the Add book form with valid Title and Author", "when": "the user enters '0' in Pages and clicks 'Save book'", "then": "'Pages must be a positive whole number' is shown and the URL is still /books/new", "e2e": true },
+    { "id": "AC-5", "feature": "F1", "given": "the Add book form", "when": "the user changes Status from 'Want to read' to 'Finished'", "then": "a 'Rating' group with buttons 'Rate 1 star' to 'Rate 5 stars' appears; changing Status back to 'Want to read' hides it", "e2e": true },
+    { "id": "AC-6", "feature": "F2", "given": "freshly restored demo data", "when": "the user opens /", "then": "12 book cards are shown and the tabs read 'All · 12', 'Want to read · 3', 'Reading · 2', 'Finished · 7'", "e2e": true },
+    { "id": "AC-7", "feature": "F2", "given": "freshly restored demo data on /", "when": "the user clicks the 'Finished' tab", "then": "the URL contains status=finished, 7 cards are shown, 'The Hobbit' is visible and 'Piranesi' is not", "e2e": true },
+    { "id": "AC-8", "feature": "F2", "given": "all books have been deleted via Settings", "when": "the user opens /", "then": "'Your shelf is empty' is shown and clicking 'Add your first book' navigates to /books/new", "e2e": true },
+    { "id": "AC-9", "feature": "F2", "given": "all books deleted and then one book added with status 'Want to read'", "when": "the user clicks the 'Reading' tab", "then": "'No books in Reading' is shown", "e2e": true },
+    { "id": "AC-10", "feature": "F3", "given": "freshly restored demo data on /", "when": "the user sets 'Status for Piranesi' to 'Reading'", "then": "a toast 'Moved to Reading' appears, the Piranesi card shows 'Reading', and the tabs read 'Want to read · 2' and 'Reading · 3'", "e2e": true },
+    { "id": "AC-11", "feature": "F3", "given": "freshly restored demo data on /", "when": "the user sets 'Status for Middlemarch' to 'Finished'", "then": "a toast 'Marked as finished' appears and the Middlemarch card shows 'Rate this book' with a 'Rate 5 stars' button", "e2e": true },
+    { "id": "AC-12", "feature": "F3", "given": "a book just marked Finished today", "when": "the user opens its detail page", "then": "the page shows 'Finished on' followed by today's date in en-US medium format (e.g. 'Sep 30, 2026')", "e2e": true },
+    { "id": "AC-13", "feature": "F4", "given": "a Finished book that is 'Not rated'", "when": "the user clicks 'Rate 4 stars'", "then": "a toast 'Rated 4 out of 5' appears, an element named 'Rated 4 out of 5' is visible, and it is still visible after reloading the page", "e2e": true },
+    { "id": "AC-14", "feature": "F4", "given": "freshly restored demo data", "when": "the user views the 'Piranesi' card on / and the Piranesi detail page", "then": "no 'Rate 1 star' button and no 'Rate this book' label are present for Piranesi", "e2e": true },
+    { "id": "AC-15", "feature": "F4", "given": "the detail page of 'The Hobbit' showing 'Rated 5 out of 5'", "when": "the user clicks 'Clear rating'", "then": "'Rated 5 out of 5' disappears and 'Not rated' is shown", "e2e": true },
+    { "id": "AC-16", "feature": "F4", "given": "the detail page of 'Dune' showing 'Rated 4 out of 5'", "when": "the user changes status to 'Reading' and then back to 'Finished'", "then": "the page shows 'Not rated' and no 'Rated 4 out of 5' element", "e2e": true },
+    { "id": "AC-17", "feature": "F5", "given": "freshly restored demo data", "when": "the user opens /stats", "then": "stat cards show Total books '12', Want to read '3', Reading '2', Finished '7', Pages read '2,210' and Average rating '4.3'", "e2e": true },
+    { "id": "AC-18", "feature": "F5", "given": "freshly restored demo data", "when": "the user opens /stats", "then": "the 'Rating distribution' section shows '5 stars' 3, '4 stars' 3, '3 stars' 1, '2 stars' 0, '1 star' 0", "e2e": true },
+    { "id": "AC-19", "feature": "F5", "given": "the user has noted the 'Finished' and 'Finished this year' values on /stats", "when": "the user marks 'Piranesi' as Finished and reopens /stats", "then": "both 'Finished' and 'Finished this year' are 1 higher than before", "e2e": true },
+    { "id": "AC-20", "feature": "F5", "given": "the /stats page", "when": "the user looks at the 'Finished per month' chart", "then": "it has 12 bars, the last bar's accessible name starts with the current month as '{Mon YYYY}:' (e.g. 'Sep 2026:'), and after marking a book finished today that bar's count is 1 higher", "e2e": true },
+    { "id": "AC-21", "feature": "F5", "given": "all books have been deleted via Settings", "when": "the user opens /stats", "then": "'No stats yet' is shown and clicking 'Add a book' navigates to /books/new", "e2e": true },
+    { "id": "AC-22", "feature": "F6", "given": "freshly restored demo data on /", "when": "the user clicks the 'Circe' card title", "then": "the URL matches /books/{id}, the h1 is 'Circe', and 'Madeline Miller', 'Finished' and 'Added on' are visible", "e2e": true },
+    { "id": "AC-23", "feature": "F6", "given": "the detail page of 'Circe'", "when": "the user clicks 'Edit', changes Title to 'Circe (Reread)' and clicks 'Save changes'", "then": "the URL is the detail page, a toast 'Changes saved' appears and the h1 is 'Circe (Reread)'", "e2e": true },
+    { "id": "AC-24", "feature": "F6", "given": "no book with id 'does-not-exist'", "when": "the user opens /books/does-not-exist", "then": "'Book not found' is shown and clicking 'Back to library' navigates to /", "e2e": true },
+    { "id": "AC-25", "feature": "F7", "given": "the detail page of 'Educated'", "when": "the user clicks 'Delete' and then 'Cancel' in the dialog 'Delete \"Educated\"?'", "then": "the dialog closes and the h1 'Educated' is still shown", "e2e": true },
+    { "id": "AC-26", "feature": "F7", "given": "the detail page of 'Educated'", "when": "the user clicks 'Delete' and confirms with 'Delete' in the dialog", "then": "the URL is /, a toast 'Book deleted' with an 'Undo' button appears, and no 'Educated' card is shown", "e2e": true },
+    { "id": "AC-27", "feature": "F7", "given": "'Educated' (Finished, rated 3) was just deleted and the 'Book deleted' toast is visible", "when": "the user clicks 'Undo'", "then": "the 'Educated' card reappears showing 'Finished' and 'Rated 3 out of 5'", "e2e": true },
+    { "id": "AC-28", "feature": "F8", "given": "freshly restored demo data on /", "when": "the user types 'tolkien' into 'Search books'", "then": "the URL contains q=tolkien and exactly one card, 'The Hobbit', is shown", "e2e": true },
+    { "id": "AC-29", "feature": "F8", "given": "freshly restored demo data on /", "when": "the user searches 'zzzz' and then clicks 'Clear search'", "then": "'No books match \"zzzz\"' is shown first; after clearing, 12 cards are shown and the URL has no q parameter", "e2e": true },
+    { "id": "AC-30", "feature": "F8", "given": "freshly restored demo data on /", "when": "the user selects 'Title (A–Z)' in 'Sort by'", "then": "the URL contains sort=title, the first card is 'A Wizard of Earthsea' and the last card is 'The Remains of the Day'", "e2e": true },
+    { "id": "AC-31", "feature": "F9", "given": "the /settings page", "when": "the user clicks 'Delete all books' and confirms in the dialog 'Delete all books?'", "then": "a toast 'All books deleted' appears and / shows 'Your shelf is empty'", "e2e": true },
+    { "id": "AC-32", "feature": "F9", "given": "the library has been emptied", "when": "the user clicks 'Restore demo data' on /settings and confirms", "then": "a toast 'Demo data restored' appears and / shows 12 cards including 'The Hobbit'", "e2e": true },
+    { "id": "AC-33", "feature": "F10", "given": "the app in light theme", "when": "the user clicks 'Toggle theme' and reloads the page", "then": "the html element has class 'dark' both before and after the reload", "e2e": true },
+    { "id": "AC-34", "feature": "F10", "given": "a 375x812 viewport", "when": "the user opens / and /stats", "then": "document.documentElement.scrollWidth is not greater than 375 and links 'Library', 'Stats' and 'Settings' are visible", "e2e": true },
+    { "id": "AC-35", "feature": "F11", "given": "freshly restored demo data with no goal set", "when": "the user clicks 'Set goal' on /stats, enters 24 and saves", "then": "a 'Reading goal {current year}' card shows '{Finished this year value} of 24 books' and a progressbar with aria-valuemax '24'", "e2e": true },
+    { "id": "AC-36", "feature": "F12", "given": "freshly restored demo data on the 'Want to read' tab", "when": "the user clicks 'Pick my next read' and then 'Start reading'", "then": "the dialog 'Your next read' showed one of 'Piranesi', 'The Overstory', 'Braiding Sweetgrass'; after starting, a toast 'Moved to Reading' appears and the tab reads 'Want to read · 2'", "e2e": true }
+  ],
+  "non_goals": [
+    "User accounts, login, multi-user or sharing",
+    "Fetching metadata or covers from external book APIs",
+    "Import/export (e.g. Goodreads CSV)",
+    "Page-by-page progress tracking, reading sessions or timers",
+    "Social feeds, recommendations or long-form reviews",
+    "Custom shelves or tags beyond the three statuses",
+    "Payments, notifications, native mobile apps, offline/PWA support"
+  ],
+  "assumptions": [
+    "Single-user local app with no authentication; data stored in SQLite on the server.",
+    "Statuses are exactly Want to read, Reading, Finished; no Abandoned/DNF status.",
+    "Ratings are whole stars 1–5, only for Finished books.",
+    "Leaving Finished clears rating and finished date; moving to Want to read clears the started date; moving to Reading keeps an existing started date.",
+    "A book can be created directly as Finished with an optional rating; its finished date is the creation date.",
+    "Pages and Notes are optional fields added beyond the prompt to enable 'Pages read' and personal notes.",
+    "Duplicate titles are allowed.",
+    "Default sort is Recently added (newest first); Title and Author sorts are case-insensitive plain alphabetical without stripping articles; Highest rated puts rated books by rating desc, then unrated, ties by title.",
+    "Search is case-insensitive substring on title or author; no pagination.",
+    "Year and month stats use the calendar in the server's local time zone; dates are shown in en-US medium format, e.g. 'Sep 30, 2026'.",
+    "Average rating is the mean of rated finished books rounded to one decimal; '—' when none rated.",
+    "Delete is a soft delete so Undo restores the book exactly; Undo is available while the toast is visible (about 6 seconds).",
+    "The reading goal is a single number for the current calendar year stored in a settings record; no goal by default.",
+    "Demo data (12 books listed in SPEC.md) is seeded automatically on first run with dates relative to seeding time, including at least one book finished in the current month; 'Restore demo data' resets to the same set and is how e2e tests reach a known state.",
+    "Theme defaults to System and persists via next-themes in localStorage.",
+    "UI is English only."
+  ]
+}
