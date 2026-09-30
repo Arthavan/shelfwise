@@ -4,6 +4,7 @@ import type { BookFormValues } from "./types";
 import {
   bookFormSchema,
   goalSchema,
+  highlightAddSchema,
   idSchema,
   progressSchema,
   rateSchema,
@@ -149,5 +150,14 @@ describe("progressSchema", () => {
     expect(progressSchema.safeParse({ ...ok, location: "" }).success).toBe(false);
     expect(progressSchema.safeParse({ ...ok, viewMode: "spread" }).success).toBe(false);
     expect(progressSchema.safeParse({ ...ok, pageTheme: "blue" }).success).toBe(false);
+  });
+});
+
+describe("highlightAddSchema", () => {
+  const rect = { x: 0.1, y: 0.1, w: 0.2, h: 0.02 };
+  const ok = { id: "b1", page: 1, rects: [rect], cfiRange: null, text: "hi", color: "yellow" } as const;
+  it("tolerates up to 400 rects and rejects more", () => {
+    expect(highlightAddSchema.safeParse({ ...ok, rects: Array(400).fill(rect) }).success).toBe(true);
+    expect(highlightAddSchema.safeParse({ ...ok, rects: Array(401).fill(rect) }).success).toBe(false);
   });
 });

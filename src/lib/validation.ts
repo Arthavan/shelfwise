@@ -92,7 +92,7 @@ const highlightColor = z.enum(["yellow", "green", "blue", "pink"]);
 export const highlightAddSchema = z.object({
   id: idSchema,
   page: z.number().int().min(1).max(100_000).nullable(),
-  rects: z.array(highlightRect).max(200),
+  rects: z.array(highlightRect).max(400),
   cfiRange: z.string().max(1000).nullable().optional(),
   text: z.string().trim().min(1).max(2000),
   color: highlightColor,

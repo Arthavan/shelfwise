@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { selectionToHighlight } from "@/components/reader/selection";
+import { MAX_HIGHLIGHT_RECTS, selectionToHighlight } from "@/components/reader/selection";
 
 const box = { left: 0, top: 0, width: 100, height: 200 };
 
@@ -27,5 +27,44 @@ describe("selectionToHighlight", () => {
   it("caps very long selections", () => {
     const r = selectionToHighlight({ text: "a".repeat(5000), rects: [{ left: 0, top: 0, width: 5, height: 5 }], box });
     expect(r?.text.length).toBe(2000);
+  });
+  it("merges per-word rects on one line into a single rect", () => {
+    // 20 words of 4px with 1px gaps on the same line (slightly jittered heights, as pdf.js spans are).
+    const rects = Array.from({ length: 20 }, (_, i) => ({ left: 2 + i * 5, top: 40 + (i % 2) * 0.3, width: 4, height: 10 - (i % 2) * 0.3 }));
+    const r = selectionToHighlight({ text: "many words", rects, box: { left: 0, top: 0, width: 200, height: 200 } });
+    expect(r?.rects).toHaveLength(1);
+    const [m] = r!.rects;
+    expect(m.x).toBeCloseTo(0.01);
+    expect(m.x + m.w).toBeCloseTo(0.505);
+    expect(m.y).toBeCloseTo(0.2);
+    expect(m.y + m.h).toBeCloseTo(0.25);
+  });
+  it("keeps two lines as two rects", () => {
+    const rects = [
+      { left: 10, top: 20, width: 30, height: 10 },
+      { left: 42, top: 20, width: 30, height: 10 },
+      { left: 10, top: 34, width: 30, height: 10 },
+      { left: 42, top: 34, width: 30, height: 10 },
+    ];
+    const r = selectionToHighlight({ text: "two lines", rects, box });
+    expect(r?.rects).toHaveLength(2);
+    expect(r!.rects[0].y).toBeLessThan(r!.rects[1].y);
+  });
+  it("keeps far-apart rects on one line (two columns) separate", () => {
+    const rects = [
+      { left: 5, top: 20, width: 30, height: 10 },
+      { left: 60, top: 20, width: 30, height: 10 },
+    ];
+    expect(selectionToHighlight({ text: "cols", rects, box })?.rects).toHaveLength(2);
+  });
+  it("never returns more rects than the cap, even for 1000 input rects", () => {
+    // 1000 separate lines: nothing merges per line, so the cap must kick in.
+    const tall = { left: 0, top: 0, width: 100, height: 10000 };
+    const rects = Array.from({ length: 1000 }, (_, i) => ({ left: 10 + (i % 3) * 20, top: i * 10, width: 10, height: 8 }));
+    const r = selectionToHighlight({ text: "long", rects, box: tall });
+    expect(r).not.toBeNull();
+    expect(r!.rects.length).toBeGreaterThan(0);
+    expect(r!.rects.length).toBeLessThanOrEqual(MAX_HIGHLIGHT_RECTS);
+    expect(MAX_HIGHLIGHT_RECTS).toBeLessThanOrEqual(150);
   });
 });
